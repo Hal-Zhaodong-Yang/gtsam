@@ -31,15 +31,22 @@ namespace gtsam {
  */
 class TrifocalTensor2 {
  private:
-  // The trifocal tensor has 2 matrices.
-  Matrix2 matrix0_, matrix1_;
+  // 5 dimensional minimal representation.
+  Rot2 aRb_, aRc_, atb_, atc_, btc_;
 
  public:
   TrifocalTensor2() {}
 
-  // Construct from the two 2x2 matrices that form the tensor.
-  TrifocalTensor2(const Matrix2& matrix0, const Matrix2& matrix1)
-      : matrix0_(matrix0), matrix1_(matrix1) {}
+  // Construct from minimal representation.
+  TrifocalTensor2(const Rot2& aRb, const Rot2& aRc, const Rot2& atb,
+                  const Rot2& atc, const Rot2& btc)
+      : aRb_(aRb), aRc_(aRc), atb_(atb), atc_(atc), btc_(btc) {}
+
+  // Construct from the two 2x2 matrices that form the tensor. The jacobian is
+  // with respect to two input matrices.
+  static TrifocalTensor2 FromTensor(const Matrix2& matrix0,
+                                    const Matrix2& matrix1,
+                                    OptionalJacobian<5, 8> Dtensor);
 
   /**
    * @brief Estimates a tensor from 8 bearing measurements in 3 cameras. Throws
@@ -75,7 +82,8 @@ class TrifocalTensor2 {
    * @param wZp bearing measurement in camera w
    * @return bearing measurement in camera u
    */
-  Rot2 transform(const Rot2& vZp, const Rot2& wZp) const;
+  Rot2 transform(const Rot2& vZp, const Rot2& wZp,
+                 OptionalJacobian<1, 5> Dtensor) const;
 
   /**
    * @brief Computes the bearing in camera 'u' from that of cameras 'v' and 'w',
@@ -85,11 +93,32 @@ class TrifocalTensor2 {
    * @param wZp projective bearing measurement in camera w
    * @return projective bearing measurement in camera u
    */
-  Point2 transform(const Point2& vZp, const Point2& wZp) const;
+  Point2 transform(const Point2& vZp, const Point2& wZp,
+                   OptionalJacobian<2, 5> Dtensor) const;
 
   // Accessors for the two matrices that comprise the trifocal tensor.
-  Matrix2 mat0() const { return matrix0_; }
-  Matrix2 mat1() const { return matrix1_; }
+  Matrix2 mat0(OptionalJacobian<4, 5> Dtensor) const;
+  Matrix2 mat1(OptionalJacobian<4, 5> Dtensor) const;
+
+  // Map (this tensor + v) from tangent space to the manifold. v is an increment
+  // in tangent space.
+  TrifocalTensor2 retract(const Vector5& v, OptionalJacobian<5, 5> Dv,
+                          OptionalJacobian<5, 5> Dtensor);
+
+  // Difference between another tensor and this tensor in tangent space.
+  Vector5 localCoordinates(const TrifocalTensor2& other,
+                           OptionalJacobian<5, 5> Dother,
+                           OptionalJacobian<5, 5> Dtensor);
+
+  // Check whether this tensor equals to another.
+  bool equals(const TrifocalTensor2& other, double tol = 1e-9);
 };
+
+template <>
+struct traits<TrifocalTensor2> : public internal::Manifold<TrifocalTensor2> {};
+
+template <>
+struct traits<const TrifocalTensor2>
+    : public internal::Manifold<TrifocalTensor2> {};
 
 }  // namespace gtsam
