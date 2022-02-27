@@ -44,9 +44,9 @@ class TrifocalTensor2 {
 
   // Construct from the two 2x2 matrices that form the tensor. The jacobian is
   // with respect to two input matrices.
-  static TrifocalTensor2 FromTensor(const Matrix2& matrix0,
-                                    const Matrix2& matrix1,
-                                    OptionalJacobian<5, 8> Dtensor);
+  static TrifocalTensor2 FromTensor(
+      const Matrix2& matrix0, const Matrix2& matrix1,
+      OptionalJacobian<5, 8> Dtensor = boost::none);
 
   /**
    * @brief Estimates a tensor from 8 bearing measurements in 3 cameras. Throws
@@ -83,7 +83,7 @@ class TrifocalTensor2 {
    * @return bearing measurement in camera u
    */
   Rot2 transform(const Rot2& vZp, const Rot2& wZp,
-                 OptionalJacobian<1, 5> Dtensor) const;
+                 OptionalJacobian<1, 5> Dtensor = boost::none) const;
 
   /**
    * @brief Computes the bearing in camera 'u' from that of cameras 'v' and 'w',
@@ -94,24 +94,25 @@ class TrifocalTensor2 {
    * @return projective bearing measurement in camera u
    */
   Point2 transform(const Point2& vZp, const Point2& wZp,
-                   OptionalJacobian<2, 5> Dtensor) const;
+                   OptionalJacobian<2, 5> Dtensor = boost::none) const;
 
   // Accessors for the two matrices that comprise the trifocal tensor.
-  Matrix2 mat0(OptionalJacobian<4, 5> Dtensor) const;
-  Matrix2 mat1(OptionalJacobian<4, 5> Dtensor) const;
+  Matrix2 mat0(OptionalJacobian<4, 5> Dtensor = boost::none) const;
+  Matrix2 mat1(OptionalJacobian<4, 5> Dtensor = boost::none) const;
 
   // Map (this tensor + v) from tangent space to the manifold. v is an increment
   // in tangent space.
-  TrifocalTensor2 retract(const Vector5& v, OptionalJacobian<5, 5> Dv,
-                          OptionalJacobian<5, 5> Dtensor);
+  TrifocalTensor2 retract(const Vector5& v,
+                          OptionalJacobian<5, 5> Dv = boost::none,
+                          OptionalJacobian<5, 5> Dtensor = boost::none);
 
   // Difference between another tensor and this tensor in tangent space.
   Vector5 localCoordinates(const TrifocalTensor2& other,
-                           OptionalJacobian<5, 5> Dother,
-                           OptionalJacobian<5, 5> Dtensor);
+                           OptionalJacobian<5, 5> Dother = boost::none,
+                           OptionalJacobian<5, 5> Dtensor = boost::none);
 
   // Check whether this tensor equals to another.
-  bool equals(const TrifocalTensor2& other, double tol = 1e-9);
+  bool equals(const TrifocalTensor2& other, double tol = 1e-9) const;
 };
 
 template <>
