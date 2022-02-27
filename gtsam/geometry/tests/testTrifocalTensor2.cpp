@@ -230,8 +230,6 @@ TEST(TrifocalTensor2, tensorConversionJacobian) {
   EXPECT(assert_equal(actual_H1, expected_H1));
 }
 
-TEST()
-
 int main() {
   TestResult tr;
   return TestRegistry::runAllTests(tr);
