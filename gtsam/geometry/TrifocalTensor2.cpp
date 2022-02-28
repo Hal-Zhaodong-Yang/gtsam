@@ -30,6 +30,82 @@ std::vector<Point2> convertToProjective(const std::vector<Rot2>& rotations) {
   return projectives;
 }
 
+// this function is intermediate calculation of trifocal matrix from trifocal
+// tensor in minimal representation. The returning value is 9 variables which
+// can be used to calculate trifocal matrix, and the 9 variables can be
+// calculated from 5 angles, which are the minimal representation of trifocal
+// tensor
+Vector9 intermediaFromMinimal(const Rot2& theta_prime,
+                              const Rot2& theta_double_prime,
+                              const Rot2& theta1, const Rot2& theta2,
+                              const Rot2& theta3,
+                              OptionalJacobian<9, 5> Dtensor = boost::none) {
+  Vector9 intermedia_function;
+  // 9 variables which appear in formula of trifocal matrix repeatedly
+  intermedia_function(0) = sin(theta2.theta() - theta_double_prime.theta());
+  intermedia_function(1) = cos(theta2.theta() - theta_double_prime.theta());
+
+  intermedia_function(2) = theta_prime.s();
+  intermedia_function(3) = theta_prime.c();
+
+  intermedia_function(4) = sin(-theta_prime.theta() + theta1.theta());
+  intermedia_function(5) = cos(-theta_prime.theta() + theta1.theta());
+
+  intermedia_function(6) = theta_double_prime.s();
+  intermedia_function(7) = theta_double_prime.c();
+
+  intermedia_function(8) =
+      sin(theta3.theta() + theta_prime.theta() - theta1.theta()) /
+      sin(theta3.theta() + theta_prime.theta() - theta2.theta());
+
+  // jacobian of the 9 variables wrt 5 angles (minimal representation of
+  // trifocal tensor)
+  if (Dtensor) {
+    for (int i = 0; i < 9; i++) {
+      for (int j = 0; j < 5; j++) {
+        Dtensor(i, j) = 0;
+      }
+    }
+    Dtensor(0, 1) = -cos(theta2.theta() - theta_double_prime.theta());
+    Dtensor(1, 1) = sin(theta2.theta() - theta_double_prime.theta());
+    Dtensor(0, 3) = cos(theta2.theta() - theta_double_prime.theta());
+    Dtensor(1, 3) = -sin(theta2.theta() - theta_double_prime.theta());
+
+    Dtensor(2, 0) = theta_prime.c();
+    Dtensor(3, 0) = -theta_prime.s();
+
+    Dtensor(4, 0) = -cos(-theta_prime.theta() + theta1.theta());
+    Dtensor(5, 0) = sin(-theta_prime.theta() + theta1.theta());
+    Dtensor(4, 2) = cos(-theta_prime.theta() + theta1.theta());
+    Dtensor(5, 2) = -sin(-theta_prime.theta() + theta1.theta());
+
+    Dtensor(6, 1) = theta_double_prime.c();
+    Dtensor(7, 1) = -theta_double_prime.s();
+
+    Dtensor(8, 0) =
+        (cos(theta3.theta() + theta_prime.theta() - theta1.theta()) *
+             sin(theta3.theta() + theta_prime.theta() - theta2.theta()) -
+         sin(theta3.theta() + theta_prime.theta() - theta1.theta()) *
+             cos(theta3.theta() + theta_prime.theta() - theta2.theta())) /
+        (sin(theta3.theta() + theta_prime.theta() - theta2.theta()) *
+         sin(theta3.theta() + theta_prime.theta() - theta2.theta()));
+
+    Dtensor(8, 2) =
+        -cos(theta3.theta() + theta_prime.theta() - theta1.theta()) /
+        sin(theta3.theta() + theta_prime.theta() - theta2.theta());
+
+    Dtensor(8, 3) =
+        sin(theta3.theta() + theta_prime.theta() - theta1.theta()) *
+        cos(theta3.theta() + theta_prime.theta() - theta2.theta()) /
+        (sin(theta3.theta() + theta_prime.theta() - theta2.theta()) *
+         sin(theta3.theta() + theta_prime.theta() - theta2.theta()));
+
+    Dtensor(8, 4) = Dtensor(8, 0);
+  }
+
+  return intermedia_function;
+}
+
 // Construct from 8 bearing measurements.
 TrifocalTensor2 TrifocalTensor2::FromBearingMeasurements(
     const std::vector<Rot2>& bearings_u, const std::vector<Rot2>& bearings_v,
@@ -81,18 +157,174 @@ TrifocalTensor2 TrifocalTensor2::FromProjectiveBearingMeasurements(
       matrix1(i, j) = V(2 * i + j + 4, V.cols() - 1);
     }
   }
-  return TrifocalTensor2(matrix0, matrix1);
+  return TrifocalTensor2::FromTensor(matrix0, matrix1);
+}
+
+static TrifocalTensor2 FromTensor(
+    const Matrix2& matrix0, const Matrix2& matrix1,
+    OptionalJacobian<5, 8> Dtensor = boost::none) {
+  // KCB is the homography transformation from view2 to view3, LCB is the
+  // homography transformation from view3 to view2
+  Matrix2 KCB << -matrix0(0, 1), -matrix0(1, 1), matrix0(0, 0), matrix0(1, 0);
+  Matrix2 LCB << -matrix1(0, 1), -matrix1(1, 1), matrix1(0, 0), matrix1(1, 0);
+  Matrix2 KAB << -matrix1(0, 0), -matrix1(1, 0), matrix0(0, 0), matrix0(1, 0);
+
+  // M is the homography transformation from view2 to itself
+  Matrix2 M = LCB.inverse() * KCB;
+
+  // this part is to calculate the eigenvector of M
+  double trace_M = M(0, 0) + M(1, 1);
+  double det_M = M(0, 0) * M(1, 1) - M(0, 1) * M(1, 0);
+  double eigenvalue1 = (trace_M + sqrt(trace_M * trace_M - 4 * det_M)) / 2.0;
+  double eigenvalue2 = (trace_M - sqrt(trace_M * trace_M - 4 * det_M)) / 2.0;
+
+  // the eigenvector, which is also epipoles of view1 and view3 in view2
+  // TODO @Hal-Zhaodong-Yang: There's multiplicity of solution. Eigenvector can
+  // be switched
+  Vector2 epipoleB1 << -M(0, 1), M(0, 0) - eigenvalue1;
+  Vector2 epipoleB3 << -M(0, 1), M(0, 0) - eigenvalue2;
+
+  // calculate epipoles in other views by projecting back
+  Vector2 epipoleA2 = KAB * epipoleB1;
+  Vector2 epipoleC2 = KCB * epipoleB3;
+  Vector2 epipoleA3 = KAB * epipoleB3;
+  Vector2 epipoleC1 = KCB * epipoleB1;
+
+  Rot2 aRb, aRc, atb, atc, btc;
+  // TODO @Hal-Zhaodong-Yang: transformation from projection to bearing is not a
+  // surjection. There's multiplicity of solution
+  atb = Rot2::atan2(epipoleA2(1), epipoleA2(0));
+  atc = Rot2::atan2(epipoleA3(1), epipoleA3(0));
+  btc = Rot2::atan2(epipoleB3(1), epipoleB3(0));
+  aRb = Rot2(atan2(epipoleA2(1), epipoleA2(0)) -
+             atan2(epipoleB1(1), epipoleB1(0)));
+  aRc = Rot2(atan2(epipoleA3(1), epipoleA3(0)) -
+             atan2(epipoleC1(1), epipoleC1(0)));
+
+  return TrifocalTensor2(aRb, aRc, atb, atc, btc);
 }
 
 // Finds a measurement in the first view using measurements from second and
 // third views.
-Rot2 TrifocalTensor2::transform(const Rot2& vZp, const Rot2& wZp) const {
+Rot2 TrifocalTensor2::transform(
+    const Rot2& vZp, const Rot2& wZp,
+    OptionalJacobian<1, 5> Dtensor = boost::none) const {
   Rot2 uZp;
   Vector2 v_measurement, w_measurement;
   v_measurement << vZp.c(), vZp.s();
   w_measurement << wZp.c(), wZp.s();
-  return Rot2::atan2(dot(matrix0_ * w_measurement, v_measurement),
-                     -dot(matrix1_ * w_measurement, v_measurement));
+  return Rot2::atan2(dot(mat0() * w_measurement, v_measurement),
+                     -dot(mat1() * w_measurement, v_measurement));
+}
+
+Matrix2 TrifocalTensor2::mat0(OptionalJacobian<4, 5> Dtensor) const {
+  Matrix2 mat0_;
+  Matrix Dintermedia_wrt_minimal(9, 5);
+
+  Vector9 intermedia = intermediaFromMinimal(aRb_, aRc_, atb_, atc_, btc_,
+                                             Dintermedia_wrt_minimal);
+
+  // trifocal matrix formula using intermediate variables
+  mat0_(0, 0) = -intermedia(8) * intermedia(0) * intermedia(2) +
+                intermedia(4) * intermedia(6);
+  mat0_(0, 1) = intermedia(8) * intermedia(1) * intermedia(2) +
+                intermedia(4) * intermedia(7);
+  mat0_(1, 0) = -intermedia(8) * intermedia(0) * intermedia(3) -
+                intermedia(5) * intermedia(6);
+  mat0_(1, 1) = intermedia(8) * intermedia(1) * intermedia(3) -
+                intermedia(5) * intermedia(7);
+
+  if (Dtensor) {
+    Matrix Dtensor_wrt_intermedia(4, 9);
+    for (int i = 0; i < 4; i++) {
+      for (int j = 0; j < 9; j++) {
+        Dtensor_wrt_intermedia(i, j) = 0;
+      }
+    }
+    // calculate jacobian according to the formula above
+    Dtensor_wrt_intermedia(0, 0) = -intermedia(8) * intermedia(2);
+    Dtensor_wrt_intermedia(0, 2) = -intermedia(8) * intermedia(0);
+    Dtensor_wrt_intermedia(0, 8) = -intermedia(0) * intermedia(2);
+    Dtensor_wrt_intermedia(0, 4) = intermedia(6);
+    Dtensor_wrt_intermedia(0, 6) = intermedia(4);
+
+    Dtensor_wrt_intermedia(1, 1) = intermedia(8) * intermedia(2);
+    Dtensor_wrt_intermedia(1, 2) = intermedia(8) * intermedia(1);
+    Dtensor_wrt_intermedia(1, 8) = intermedia(1) * intermedia(2);
+    Dtensor_wrt_intermedia(1, 4) = intermedia(7);
+    Dtensor_wrt_intermedia(1, 7) = intermedia(4);
+
+    Dtensor_wrt_intermedia(2, 0) = -intermedia(8) * intermedia(3);
+    Dtensor_wrt_intermedia(2, 3) = -intermedia(8) * intermedia(0);
+    Dtensor_wrt_intermedia(2, 8) = -intermedia(0) * intermedia(3);
+    Dtensor_wrt_intermedia(2, 5) = -intermedia(6);
+    Dtensor_wrt_intermedia(2, 6) = -intermedia(5);
+
+    Dtensor_wrt_intermedia(3, 1) = intermedia(8) * intermedia(3);
+    Dtensor_wrt_intermedia(3, 3) = intermedia(8) * intermedia(1);
+    Dtensor_wrt_intermedia(3, 8) = intermedia(1) * intermedia(3);
+    Dtensor_wrt_intermedia(3, 5) = -intermedia(7);
+    Dtensor_wrt_intermedia(3, 7) = -intermedia(5);
+
+    Dtensor = Dtensor_wrt_intermedia * Dintermedia_wrt_minimal;
+  }
+
+  return mat0_;
+}
+
+Matrix2 TrifocalTensor2::mat1(OptionalJacobian<4, 5> Dtensor) const {
+  Matrix2 mat1_;
+  Matrix Dintermedia_wrt_minimal(9, 5);
+
+  Vector9 intermedia = intermediaFromMinimal(aRb_, aRc_, atb_, atc_, btc_,
+                                             Dintermedia_wrt_minimal);
+
+  // trifocal matrix formula using intermediate variables (different with mat0)
+  mat1_(0, 0) = intermedia(8) * intermedia(0) * intermedia(3) -
+                intermedia(4) * intermedia(7);
+  mat1_(0, 1) = -intermedia(8) * intermedia(1) * intermedia(3) +
+                intermedia(4) * intermedia(6);
+  mat1_(1, 0) = -intermedia(8) * intermedia(0) * intermedia(2) +
+                intermedia(5) * intermedia(7);
+  mat1_(1, 1) = intermedia(8) * intermedia(1) * intermedia(2) -
+                intermedia(5) * intermedia(6);
+
+  if (Dtensor) {
+    Matrix Dtensor_wrt_intermedia(4, 9);
+    for (int i = 0; i < 4; i++) {
+      for (int j = 0; j < 9; j++) {
+        Dtensor_wrt_intermedia(i, j) = 0;
+      }
+    }
+    // calculate jacobian according to the formula above
+    Dtensor_wrt_intermedia(0, 0) = intermedia(8) * intermedia(3);
+    Dtensor_wrt_intermedia(0, 3) = intermedia(8) * intermedia(0);
+    Dtensor_wrt_intermedia(0, 8) = intermedia(0) * intermedia(3);
+    Dtensor_wrt_intermedia(0, 4) = -intermedia(7);
+    Dtensor_wrt_intermedia(0, 7) = -intermedia(4);
+
+    Dtensor_wrt_intermedia(1, 1) = -intermedia(8) * intermedia(3);
+    Dtensor_wrt_intermedia(1, 3) = -intermedia(8) * intermedia(1);
+    Dtensor_wrt_intermedia(1, 8) = -intermedia(1) * intermedia(3);
+    Dtensor_wrt_intermedia(1, 4) = intermedia(6);
+    Dtensor_wrt_intermedia(1, 6) = intermedia(4);
+
+    Dtensor_wrt_intermedia(2, 0) = -intermedia(8) * intermedia(2);
+    Dtensor_wrt_intermedia(2, 2) = -intermedia(8) * intermedia(0);
+    Dtensor_wrt_intermedia(2, 8) = -intermedia(0) * intermedia(2);
+    Dtensor_wrt_intermedia(2, 5) = intermedia(7);
+    Dtensor_wrt_intermedia(2, 7) = intermedia(5);
+
+    Dtensor_wrt_intermedia(3, 1) = intermedia(8) * intermedia(2);
+    Dtensor_wrt_intermedia(3, 2) = intermedia(8) * intermedia(1);
+    Dtensor_wrt_intermedia(3, 8) = intermedia(1) * intermedia(2);
+    Dtensor_wrt_intermedia(3, 5) = -intermedia(6);
+    Dtensor_wrt_intermedia(3, 6) = -intermedia(5);
+
+    Dtensor = Dtensor_wrt_intermedia * Dintermedia_wrt_minimal;
+  }
+
+  return mat1_;
 }
 
 }  // namespace gtsam
