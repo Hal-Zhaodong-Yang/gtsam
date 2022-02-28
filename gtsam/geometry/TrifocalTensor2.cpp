@@ -41,6 +41,7 @@ Vector9 intermediaFromMinimal(const Rot2& theta_prime,
                               const Rot2& theta3,
                               OptionalJacobian<9, 5> Dtensor = boost::none) {
   Vector9 intermedia_function;
+  Matrix jacobian(9, 5);
   // 9 variables which appear in formula of trifocal matrix repeatedly
   intermedia_function(0) = sin(theta2.theta() - theta_double_prime.theta());
   intermedia_function(1) = cos(theta2.theta() - theta_double_prime.theta());
@@ -63,26 +64,26 @@ Vector9 intermediaFromMinimal(const Rot2& theta_prime,
   if (Dtensor) {
     for (int i = 0; i < 9; i++) {
       for (int j = 0; j < 5; j++) {
-        Dtensor(i, j) = 0;
+        jacobian(i, j) = 0;
       }
     }
-    Dtensor(0, 1) = -cos(theta2.theta() - theta_double_prime.theta());
-    Dtensor(1, 1) = sin(theta2.theta() - theta_double_prime.theta());
-    Dtensor(0, 3) = cos(theta2.theta() - theta_double_prime.theta());
-    Dtensor(1, 3) = -sin(theta2.theta() - theta_double_prime.theta());
+    jacobian(0, 1) = -cos(theta2.theta() - theta_double_prime.theta());
+    jacobian(1, 1) = sin(theta2.theta() - theta_double_prime.theta());
+    jacobian(0, 3) = cos(theta2.theta() - theta_double_prime.theta());
+    jacobian(1, 3) = -sin(theta2.theta() - theta_double_prime.theta());
 
-    Dtensor(2, 0) = theta_prime.c();
-    Dtensor(3, 0) = -theta_prime.s();
+    jacobian(2, 0) = theta_prime.c();
+    jacobian(3, 0) = -theta_prime.s();
 
-    Dtensor(4, 0) = -cos(-theta_prime.theta() + theta1.theta());
-    Dtensor(5, 0) = sin(-theta_prime.theta() + theta1.theta());
-    Dtensor(4, 2) = cos(-theta_prime.theta() + theta1.theta());
-    Dtensor(5, 2) = -sin(-theta_prime.theta() + theta1.theta());
+    jacobian(4, 0) = -cos(-theta_prime.theta() + theta1.theta());
+    jacobian(5, 0) = sin(-theta_prime.theta() + theta1.theta());
+    jacobian(4, 2) = cos(-theta_prime.theta() + theta1.theta());
+    jacobian(5, 2) = -sin(-theta_prime.theta() + theta1.theta());
 
-    Dtensor(6, 1) = theta_double_prime.c();
-    Dtensor(7, 1) = -theta_double_prime.s();
+    jacobian(6, 1) = theta_double_prime.c();
+    jacobian(7, 1) = -theta_double_prime.s();
 
-    Dtensor(8, 0) =
+    jacobian(8, 0) =
         (cos(theta3.theta() + theta_prime.theta() - theta1.theta()) *
              sin(theta3.theta() + theta_prime.theta() - theta2.theta()) -
          sin(theta3.theta() + theta_prime.theta() - theta1.theta()) *
@@ -90,17 +91,19 @@ Vector9 intermediaFromMinimal(const Rot2& theta_prime,
         (sin(theta3.theta() + theta_prime.theta() - theta2.theta()) *
          sin(theta3.theta() + theta_prime.theta() - theta2.theta()));
 
-    Dtensor(8, 2) =
+    jacobian(8, 2) =
         -cos(theta3.theta() + theta_prime.theta() - theta1.theta()) /
         sin(theta3.theta() + theta_prime.theta() - theta2.theta());
 
-    Dtensor(8, 3) =
+    jacobian(8, 3) =
         sin(theta3.theta() + theta_prime.theta() - theta1.theta()) *
         cos(theta3.theta() + theta_prime.theta() - theta2.theta()) /
         (sin(theta3.theta() + theta_prime.theta() - theta2.theta()) *
          sin(theta3.theta() + theta_prime.theta() - theta2.theta()));
 
-    Dtensor(8, 4) = Dtensor(8, 0);
+    jacobian(8, 4) = jacobian(8, 0);
+
+    *Dtensor << jacobian;
   }
 
   return intermedia_function;
@@ -165,9 +168,12 @@ static TrifocalTensor2 FromTensor(
     OptionalJacobian<5, 8> Dtensor = boost::none) {
   // KCB is the homography transformation from view2 to view3, LCB is the
   // homography transformation from view3 to view2
-  Matrix2 KCB << -matrix0(0, 1), -matrix0(1, 1), matrix0(0, 0), matrix0(1, 0);
-  Matrix2 LCB << -matrix1(0, 1), -matrix1(1, 1), matrix1(0, 0), matrix1(1, 0);
-  Matrix2 KAB << -matrix1(0, 0), -matrix1(1, 0), matrix0(0, 0), matrix0(1, 0);
+  Matrix2 KCB;
+  KCB << -matrix0(0, 1), -matrix0(1, 1), matrix0(0, 0), matrix0(1, 0);
+  Matrix2 LCB;
+  LCB << -matrix1(0, 1), -matrix1(1, 1), matrix1(0, 0), matrix1(1, 0);
+  Matrix2 KAB;
+  KAB << -matrix1(0, 0), -matrix1(1, 0), matrix0(0, 0), matrix0(1, 0);
 
   // M is the homography transformation from view2 to itself
   Matrix2 M = LCB.inverse() * KCB;
@@ -181,8 +187,10 @@ static TrifocalTensor2 FromTensor(
   // the eigenvector, which is also epipoles of view1 and view3 in view2
   // TODO @Hal-Zhaodong-Yang: There's multiplicity of solution. Eigenvector can
   // be switched
-  Vector2 epipoleB1 << -M(0, 1), M(0, 0) - eigenvalue1;
-  Vector2 epipoleB3 << -M(0, 1), M(0, 0) - eigenvalue2;
+  Vector2 epipoleB1;
+  epipoleB1 << -M(0, 1), M(0, 0) - eigenvalue1;
+  Vector2 epipoleB3;
+  epipoleB3 << -M(0, 1), M(0, 0) - eigenvalue2;
 
   // calculate epipoles in other views by projecting back
   Vector2 epipoleA2 = KAB * epipoleB1;
@@ -218,20 +226,20 @@ Rot2 TrifocalTensor2::transform(
 }
 
 Matrix2 TrifocalTensor2::mat0(OptionalJacobian<4, 5> Dtensor) const {
-  Matrix2 mat0_;
+  Matrix2 matrix0;
   Matrix Dintermedia_wrt_minimal(9, 5);
 
   Vector9 intermedia = intermediaFromMinimal(aRb_, aRc_, atb_, atc_, btc_,
                                              Dintermedia_wrt_minimal);
 
   // trifocal matrix formula using intermediate variables
-  mat0_(0, 0) = -intermedia(8) * intermedia(0) * intermedia(2) +
+  matrix0(0, 0) = -intermedia(8) * intermedia(0) * intermedia(2) +
                 intermedia(4) * intermedia(6);
-  mat0_(0, 1) = intermedia(8) * intermedia(1) * intermedia(2) +
+  matrix0(0, 1) = intermedia(8) * intermedia(1) * intermedia(2) +
                 intermedia(4) * intermedia(7);
-  mat0_(1, 0) = -intermedia(8) * intermedia(0) * intermedia(3) -
+  matrix0(1, 0) = -intermedia(8) * intermedia(0) * intermedia(3) -
                 intermedia(5) * intermedia(6);
-  mat0_(1, 1) = intermedia(8) * intermedia(1) * intermedia(3) -
+  matrix0(1, 1) = intermedia(8) * intermedia(1) * intermedia(3) -
                 intermedia(5) * intermedia(7);
 
   if (Dtensor) {
@@ -266,27 +274,27 @@ Matrix2 TrifocalTensor2::mat0(OptionalJacobian<4, 5> Dtensor) const {
     Dtensor_wrt_intermedia(3, 5) = -intermedia(7);
     Dtensor_wrt_intermedia(3, 7) = -intermedia(5);
 
-    Dtensor = Dtensor_wrt_intermedia * Dintermedia_wrt_minimal;
+    *Dtensor = Dtensor_wrt_intermedia * Dintermedia_wrt_minimal;
   }
 
-  return mat0_;
+  return matrix0;
 }
 
 Matrix2 TrifocalTensor2::mat1(OptionalJacobian<4, 5> Dtensor) const {
-  Matrix2 mat1_;
+  Matrix2 matrix1;
   Matrix Dintermedia_wrt_minimal(9, 5);
 
   Vector9 intermedia = intermediaFromMinimal(aRb_, aRc_, atb_, atc_, btc_,
-                                             Dintermedia_wrt_minimal);
+                                             &Dintermedia_wrt_minimal);
 
   // trifocal matrix formula using intermediate variables (different with mat0)
-  mat1_(0, 0) = intermedia(8) * intermedia(0) * intermedia(3) -
+  matrix1(0, 0) = intermedia(8) * intermedia(0) * intermedia(3) -
                 intermedia(4) * intermedia(7);
-  mat1_(0, 1) = -intermedia(8) * intermedia(1) * intermedia(3) +
+  matrix1(0, 1) = -intermedia(8) * intermedia(1) * intermedia(3) +
                 intermedia(4) * intermedia(6);
-  mat1_(1, 0) = -intermedia(8) * intermedia(0) * intermedia(2) +
+  matrix1(1, 0) = -intermedia(8) * intermedia(0) * intermedia(2) +
                 intermedia(5) * intermedia(7);
-  mat1_(1, 1) = intermedia(8) * intermedia(1) * intermedia(2) -
+  matrix1(1, 1) = intermedia(8) * intermedia(1) * intermedia(2) -
                 intermedia(5) * intermedia(6);
 
   if (Dtensor) {
@@ -321,10 +329,10 @@ Matrix2 TrifocalTensor2::mat1(OptionalJacobian<4, 5> Dtensor) const {
     Dtensor_wrt_intermedia(3, 5) = -intermedia(6);
     Dtensor_wrt_intermedia(3, 6) = -intermedia(5);
 
-    Dtensor = Dtensor_wrt_intermedia * Dintermedia_wrt_minimal;
+    *Dtensor = Dtensor_wrt_intermedia * Dintermedia_wrt_minimal;
   }
 
-  return mat1_;
+  return matrix1;
 }
 
 }  // namespace gtsam
