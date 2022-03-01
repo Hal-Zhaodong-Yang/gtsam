@@ -355,4 +355,11 @@ Vector5 TrifocalTensor2::localCoordinates(
   return Vector5();
 }
 
+bool TrifocalTensor2::equals(const TrifocalTensor2& other,
+                             double tol) const {
+  return aRb_.equals(other.aRb()) && aRc_.equals(other.aRc()) &&
+         atb_.equals(other.atb()) && atc_.equals(other.atc()) &&
+         btc_.equals(other.btc());
+}
+
 }  // namespace gtsam

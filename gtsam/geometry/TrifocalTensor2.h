@@ -121,6 +121,13 @@ class TrifocalTensor2 {
 
   // Check whether this tensor equals to another.
   bool equals(const TrifocalTensor2& other, double tol = 1e-9) const;
+
+  // Accessors
+  Rot2 aRb() const { return aRb_; }
+  Rot2 aRc() const { return aRc_; }
+  Rot2 atb() const { return atb_; }
+  Rot2 atc() const { return atb_; }
+  Rot2 btc() const { return atc_; }
 };
 
 template <>
