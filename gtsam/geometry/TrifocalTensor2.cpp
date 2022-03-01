@@ -39,7 +39,7 @@ Vector9 intermediaFromMinimal(const Rot2& theta_prime,
                               const Rot2& theta_double_prime,
                               const Rot2& theta1, const Rot2& theta2,
                               const Rot2& theta3,
-                              OptionalJacobian<9, 5> Dtensor = boost::none) {
+                              OptionalJacobian<9, 5> Dtensor) {
   Vector9 intermedia_function;
   Matrix jacobian(9, 5);
   // 9 variables which appear in formula of trifocal matrix repeatedly
@@ -163,9 +163,9 @@ TrifocalTensor2 TrifocalTensor2::FromProjectiveBearingMeasurements(
   return TrifocalTensor2::FromTensor(matrix0, matrix1);
 }
 
-static TrifocalTensor2 FromTensor(
-    const Matrix2& matrix0, const Matrix2& matrix1,
-    OptionalJacobian<5, 8> Dtensor = boost::none) {
+TrifocalTensor2 TrifocalTensor2::FromTensor(const Matrix2& matrix0,
+                                            const Matrix2& matrix1,
+                                            OptionalJacobian<5, 8> Dtensor) {
   // KCB is the homography transformation from view2 to view3, LCB is the
   // homography transformation from view3 to view2
   Matrix2 KCB;
@@ -214,9 +214,8 @@ static TrifocalTensor2 FromTensor(
 
 // Finds a measurement in the first view using measurements from second and
 // third views.
-Rot2 TrifocalTensor2::transform(
-    const Rot2& vZp, const Rot2& wZp,
-    OptionalJacobian<1, 5> Dtensor = boost::none) const {
+Rot2 TrifocalTensor2::transform(const Rot2& vZp, const Rot2& wZp,
+                                OptionalJacobian<1, 5> Dtensor) const {
   Rot2 uZp;
   Vector2 v_measurement, w_measurement;
   v_measurement << vZp.c(), vZp.s();
@@ -234,13 +233,13 @@ Matrix2 TrifocalTensor2::mat0(OptionalJacobian<4, 5> Dtensor) const {
 
   // trifocal matrix formula using intermediate variables
   matrix0(0, 0) = -intermedia(8) * intermedia(0) * intermedia(2) +
-                intermedia(4) * intermedia(6);
+                  intermedia(4) * intermedia(6);
   matrix0(0, 1) = intermedia(8) * intermedia(1) * intermedia(2) +
-                intermedia(4) * intermedia(7);
+                  intermedia(4) * intermedia(7);
   matrix0(1, 0) = -intermedia(8) * intermedia(0) * intermedia(3) -
-                intermedia(5) * intermedia(6);
+                  intermedia(5) * intermedia(6);
   matrix0(1, 1) = intermedia(8) * intermedia(1) * intermedia(3) -
-                intermedia(5) * intermedia(7);
+                  intermedia(5) * intermedia(7);
 
   if (Dtensor) {
     Matrix Dtensor_wrt_intermedia(4, 9);
@@ -289,13 +288,13 @@ Matrix2 TrifocalTensor2::mat1(OptionalJacobian<4, 5> Dtensor) const {
 
   // trifocal matrix formula using intermediate variables (different with mat0)
   matrix1(0, 0) = intermedia(8) * intermedia(0) * intermedia(3) -
-                intermedia(4) * intermedia(7);
+                  intermedia(4) * intermedia(7);
   matrix1(0, 1) = -intermedia(8) * intermedia(1) * intermedia(3) +
-                intermedia(4) * intermedia(6);
+                  intermedia(4) * intermedia(6);
   matrix1(1, 0) = -intermedia(8) * intermedia(0) * intermedia(2) +
-                intermedia(5) * intermedia(7);
+                  intermedia(5) * intermedia(7);
   matrix1(1, 1) = intermedia(8) * intermedia(1) * intermedia(2) -
-                intermedia(5) * intermedia(6);
+                  intermedia(5) * intermedia(6);
 
   if (Dtensor) {
     Matrix Dtensor_wrt_intermedia(4, 9);
@@ -333,6 +332,27 @@ Matrix2 TrifocalTensor2::mat1(OptionalJacobian<4, 5> Dtensor) const {
   }
 
   return matrix1;
+}
+
+void TrifocalTensor2::print(const std::string& s) const {
+  std::cout << s << std::endl;
+  std::cout << "aRb: " << aRb_.theta() << ", aRc: " << aRc_.theta()
+            << ", atb: " << atb_.theta() << ", atc:" << atc_.theta()
+            << ", btc: " << btc_.theta() << std::endl;
+}
+
+TrifocalTensor2 TrifocalTensor2::retract(const Vector5& v,
+                                         OptionalJacobian<5, 5> Dv,
+                                         OptionalJacobian<5, 5> Dtensor) const {
+  // TODO: define retract
+  return TrifocalTensor2();
+}
+
+Vector5 TrifocalTensor2::localCoordinates(
+    const TrifocalTensor2& other, OptionalJacobian<5, 5> Dother,
+    OptionalJacobian<5, 5> Dtensor) const {
+  // TODO: define local coordinates
+  return Vector5();
 }
 
 }  // namespace gtsam

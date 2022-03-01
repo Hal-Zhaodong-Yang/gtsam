@@ -35,6 +35,8 @@ class TrifocalTensor2 {
   Rot2 aRb_, aRc_, atb_, atc_, btc_;
 
  public:
+  enum { dimension = 5 };  // 5-D manifold.
+
   TrifocalTensor2() {}
 
   // Construct from minimal representation.
@@ -104,12 +106,18 @@ class TrifocalTensor2 {
   // in tangent space.
   TrifocalTensor2 retract(const Vector5& v,
                           OptionalJacobian<5, 5> Dv = boost::none,
-                          OptionalJacobian<5, 5> Dtensor = boost::none);
+                          OptionalJacobian<5, 5> Dtensor = boost::none) const;
 
   // Difference between another tensor and this tensor in tangent space.
   Vector5 localCoordinates(const TrifocalTensor2& other,
                            OptionalJacobian<5, 5> Dother = boost::none,
-                           OptionalJacobian<5, 5> Dtensor = boost::none);
+                           OptionalJacobian<5, 5> Dtensor = boost::none) const;
+
+  /**
+   * Print R, a, b
+   * @param s: optional starting string
+   */
+  void print(const std::string& s = "") const;
 
   // Check whether this tensor equals to another.
   bool equals(const TrifocalTensor2& other, double tol = 1e-9) const;
