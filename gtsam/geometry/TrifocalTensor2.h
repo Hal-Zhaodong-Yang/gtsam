@@ -109,13 +109,13 @@ class TrifocalTensor2 {
   // Map (this tensor + v) from tangent space to the manifold. v is an increment
   // in tangent space.
   TrifocalTensor2 retract(const Vector5& v,
-                          OptionalJacobian<5, 5> Dv = boost::none,
-                          OptionalJacobian<5, 5> Dtensor = boost::none) const;
+                          OptionalJacobian<5, 5> Dtensor = boost::none,
+                          OptionalJacobian<5, 5> Dv = boost::none) const;
 
   // Difference between another tensor and this tensor in tangent space.
   Vector5 localCoordinates(const TrifocalTensor2& other,
-                           OptionalJacobian<5, 5> Dother = boost::none,
-                           OptionalJacobian<5, 5> Dtensor = boost::none) const;
+                           OptionalJacobian<5, 5> Dtensor = boost::none,
+                           OptionalJacobian<5, 5> Dother = boost::none) const;
 
   /**
    * Print R, a, b

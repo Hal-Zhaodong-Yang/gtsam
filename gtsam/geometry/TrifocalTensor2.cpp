@@ -108,6 +108,26 @@ Vector9 intermediaFromMinimal(const Rot2& theta_prime,
 
   return intermedia_function;
 }
+Rot2 retractWithRot2(const Rot2& r, const Vector5& v, int idx,
+                     OptionalJacobian<5, 5> Dtensor,
+                     OptionalJacobian<5, 5> Dv) {
+  OptionalJacobian<1, 1> Drot2, Dv1;
+  Vector1 v1 = v.block<1, 1>(idx, idx);
+  Rot2 result = r.retract(v1, Drot2, Dv1);
+  if (Dtensor) Dtensor->block<1, 1>(idx, idx) = *Drot2;
+  if (Dv) Dv->block<1, 1>(idx, idx) = *Dv1;
+  return result;
+}
+
+Vector1 localCoordinatesRot2(const Rot2& this_rot, const Rot2& other, int idx,
+                             OptionalJacobian<5, 5> Dtensor,
+                             OptionalJacobian<5, 5> Dother) {
+  OptionalJacobian<1, 1> Dthis, Dother1;
+  Vector1 result = this_rot.localCoordinates(other, Dthis, Dother1);
+  if (Dtensor) Dtensor->block<1, 1>(idx, idx) = *Dthis;
+  if (Dother) Dother->block<1, 1>(idx, idx) = *Dother1;
+  return result;
+}
 
 // Construct from 8 bearing measurements.
 TrifocalTensor2 TrifocalTensor2::FromBearingMeasurements(
@@ -274,7 +294,6 @@ Matrix2 TrifocalTensor2::mat0(OptionalJacobian<4, 5> Dtensor) const {
     Dtensor_wrt_intermedia(3, 7) = -intermedia(5);
 
     *Dtensor << Dtensor_wrt_intermedia * Dintermedia_wrt_minimal;
-
   }
 
   return matrix0;
@@ -343,21 +362,35 @@ void TrifocalTensor2::print(const std::string& s) const {
 }
 
 TrifocalTensor2 TrifocalTensor2::retract(const Vector5& v,
-                                         OptionalJacobian<5, 5> Dv,
-                                         OptionalJacobian<5, 5> Dtensor) const {
-  // TODO: define retract
-  return TrifocalTensor2();
+                                         OptionalJacobian<5, 5> Dtensor,
+                                         OptionalJacobian<5, 5> Dv) const {
+  Rot2 aRb_sum = retractWithRot2(aRb_, v, 0, Dtensor, Dv);
+  Rot2 aRc_sum = retractWithRot2(aRc_, v, 1, Dtensor, Dv);
+  Rot2 atb_sum = retractWithRot2(atb_, v, 2, Dtensor, Dv);
+  Rot2 atc_sum = retractWithRot2(atc_, v, 3, Dtensor, Dv);
+  Rot2 btc_sum = retractWithRot2(btc_, v, 4, Dtensor, Dv);
+  return TrifocalTensor2(aRb_sum, aRc_sum, atb_sum, atc_sum, btc_sum);
 }
 
-Vector5 TrifocalTensor2::localCoordinates(
-    const TrifocalTensor2& other, OptionalJacobian<5, 5> Dother,
-    OptionalJacobian<5, 5> Dtensor) const {
-  // TODO: define local coordinates
-  return Vector5();
+Vector5 TrifocalTensor2::localCoordinates(const TrifocalTensor2& other,
+                                          OptionalJacobian<5, 5> Dtensor,
+                                          OptionalJacobian<5, 5> Dother) const {
+  Vector1 aRb_diff =
+      localCoordinatesRot2(aRb_, other.aRb(), 0, Dtensor, Dother);
+  Vector1 aRc_diff =
+      localCoordinatesRot2(aRc_, other.aRc(), 0, Dtensor, Dother);
+  Vector1 atb_diff =
+      localCoordinatesRot2(atb_, other.atb(), 0, Dtensor, Dother);
+  Vector1 atc_diff =
+      localCoordinatesRot2(atc_, other.atc(), 0, Dtensor, Dother);
+  Vector1 btc_diff =
+      localCoordinatesRot2(btc_, other.btc(), 0, Dtensor, Dother);
+  Vector5 result;
+  result << aRb_diff[0], aRc_diff[0], atb_diff[0], atc_diff[0], btc_diff[0];
+  return result;
 }
 
-bool TrifocalTensor2::equals(const TrifocalTensor2& other,
-                             double tol) const {
+bool TrifocalTensor2::equals(const TrifocalTensor2& other, double tol) const {
   return aRb_.equals(other.aRb(), tol) && aRc_.equals(other.aRc(), tol) &&
          atb_.equals(other.atb(), tol) && atc_.equals(other.atc(), tol) &&
          btc_.equals(other.btc(), tol);
