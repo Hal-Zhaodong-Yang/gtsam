@@ -44,6 +44,10 @@ class TrifocalTensor2 {
                   const Rot2& atc, const Rot2& btc)
       : aRb_(aRb), aRc_(aRc), atb_(atb), atc_(atc), btc_(btc) {}
 
+  // Copy constructor
+  TrifocalTensor2(const TrifocalTensor2& T)
+      : TrifocalTensor2(T.aRb_, T.aRc_, T.atb_, T.atc_, T.btc_) {}
+
   // Construct from the two 2x2 matrices that form the tensor. The jacobian is
   // with respect to two input matrices.
   static TrifocalTensor2 FromTensor(
@@ -126,8 +130,8 @@ class TrifocalTensor2 {
   Rot2 aRb() const { return aRb_; }
   Rot2 aRc() const { return aRc_; }
   Rot2 atb() const { return atb_; }
-  Rot2 atc() const { return atb_; }
-  Rot2 btc() const { return atc_; }
+  Rot2 atc() const { return atc_; }
+  Rot2 btc() const { return btc_; }
 };
 
 template <>

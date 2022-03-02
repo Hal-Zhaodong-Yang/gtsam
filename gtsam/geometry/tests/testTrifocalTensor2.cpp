@@ -105,18 +105,27 @@ TEST(TrifocalTensor2, transform) {
 // Check the correct tensor is computed from measurements (catch regressions).
 TEST(TrifocalTensor2, tensorRegression) {
   trifocal::TrifocalTestData data = trifocal::getTestData();
+  TrifocalTensor2 test_tensor = trifocal::getTestData().gt_tensor;
 
   // calculate trifocal tensor
   TrifocalTensor2 T = TrifocalTensor2::FromBearingMeasurements(
       data.measurements[0], data.measurements[1], data.measurements[2]);
 
   Matrix2 expected_tensor_mat0, expected_tensor_mat1;
-  // These values were obtained from a numpy-based python implementation.
-  expected_tensor_mat0 << -0.16301732 - 0.1968196, -0.6082839 - 0.10324949;
-  expected_tensor_mat1 << 0.45758469 - 0.36310941, 0.30334159 - 0.34751881;
 
-  EXPECT(assert_equal(T.mat0(), expected_tensor_mat0, 1e-2));
-  EXPECT(assert_equal(T.mat1(), expected_tensor_mat1, 1e-2));
+  expected_tensor_mat0 = test_tensor.mat0();
+  expected_tensor_mat1 = test_tensor.mat1();
+
+  Matrix2 actual_tensor_mat0 = T.mat0();
+  Matrix2 actual_tensor_mat1 = T.mat1();
+
+  double lambda = expected_tensor_mat0(0, 0) / actual_tensor_mat0(0, 0);
+
+  actual_tensor_mat0 *= lambda;
+  actual_tensor_mat1 *= lambda;
+
+  EXPECT(assert_equal(expected_tensor_mat0, actual_tensor_mat0, 1e-2));
+  EXPECT(assert_equal(expected_tensor_mat1, actual_tensor_mat1, 1e-2));
 }
 
 // Check the calculation of Jacobian (Ground-true Jacobian comes from Auto-Grad
@@ -124,7 +133,8 @@ TEST(TrifocalTensor2, tensorRegression) {
 // TEST(TrifocalTensor2, Jacobian) {
 //   trifocal::TrifocalTestData data = trifocal::getTestData();
 
-//   // Construct trifocal tensor using 2 rotations and 3 bearing measurements in 3
+//   // Construct trifocal tensor using 2 rotations and 3 bearing measurements
+//   in 3
 //   // cameras.
 //   std::vector<Rot2> trifocal_in_angle;
 //   trifocal_in_angle.insert(
@@ -151,7 +161,8 @@ TEST(TrifocalTensor2, tensorRegression) {
 // Testing equals() method.
 TEST(TrifocalTensor2, equals) {
   TrifocalTensor2 test_tensor = trifocal::getTestData().gt_tensor;
-  TrifocalTensor2 same_tensor = test_tensor;
+  TrifocalTensor2 same_tensor = TrifocalTensor2(test_tensor);
+
   EXPECT(test_tensor.equals(same_tensor));  // same tensors are equal.
   EXPECT(!test_tensor.equals(
       TrifocalTensor2()));  // different tensors are unequal.
@@ -166,12 +177,24 @@ TEST(TrifocalTensor2, minimalRepresentationRoundTrip) {
   TrifocalTensor2 actual_tensor =
       TrifocalTensor2::FromTensor(test_tensor.mat0(), test_tensor.mat1());
 
+  Matrix2 test_tensor_mat0 = test_tensor.mat0();
+  Matrix2 test_tensor_mat1 = test_tensor.mat1();
+
+  Matrix2 actual_tensor_mat0 = actual_tensor.mat0();
+  Matrix2 actual_tensor_mat1 = actual_tensor.mat1();
+
+  double lambda = test_tensor_mat0(0, 0) / actual_tensor_mat0(0, 0);
+
+  actual_tensor_mat0 *= lambda;
+  actual_tensor_mat1 *= lambda;
+
   // Get the tensor back from the manifold representation, comapre to original.
-  EXPECT(assert_equal(actual_tensor.mat0(), test_tensor.mat0()));
-  EXPECT(assert_equal(actual_tensor.mat1(), test_tensor.mat1()));
+  EXPECT(assert_equal(test_tensor_mat0, actual_tensor_mat0));
+  EXPECT(assert_equal(test_tensor_mat1, actual_tensor_mat1));
 }
 
 // Test jacobian of FromTensor().
+
 TEST(TrifocalTensor2, FromTensorJacobians) {
   TrifocalTensor2 test_tensor = trifocal::getTestData().gt_tensor;
   std::function<TrifocalTensor2(const Matrix2&, const Matrix2&)> f =
@@ -186,9 +209,10 @@ TEST(TrifocalTensor2, FromTensorJacobians) {
   Matrix58 actual_H;
   TrifocalTensor2 result = TrifocalTensor2::FromTensor(
       test_tensor.mat0(), test_tensor.mat1(), actual_H);
-  EXPECT(assert_equal<Matrix54>(actual_H.topLeftCorner(5, 4), expectedH1));
-  EXPECT(assert_equal<Matrix54>(actual_H.topRightCorner(5, 4), expectedH2));
+  EXPECT(assert_equal<Matrix54>(expectedH1, actual_H.topLeftCorner(5, 4)));
+  EXPECT(assert_equal<Matrix54>(expectedH2, actual_H.topRightCorner(5, 4)));
 }
+
 
 Rot2 tranformBearing(const TrifocalTensor2& tensor, const Rot2& theta_b,
                      const Rot2& theta_c) {
@@ -196,6 +220,7 @@ Rot2 tranformBearing(const TrifocalTensor2& tensor, const Rot2& theta_b,
 }
 
 // test jacobian of transform()
+
 TEST(TrifocalTensor2, transformJacobian) {
   trifocal::TrifocalTestData data = trifocal::getTestData();
   Rot2 theta_b = data.measurements[0][0], theta_c = data.measurements[1][0];
@@ -206,19 +231,22 @@ TEST(TrifocalTensor2, transformJacobian) {
 
   Matrix15 actual_H;
   Rot2 result = data.gt_tensor.transform(theta_b, theta_c, actual_H);
-  EXPECT(assert_equal(actual_H, expected_H));
+  EXPECT(assert_equal(expected_H, actual_H));
 }
+
 
 TEST(TrifocalTensor2, tensorConversionJacobian) {
   TrifocalTensor2 test_tensor = trifocal::getTestData().gt_tensor;
 
   // First matrix
+
   std::function<Matrix2(const TrifocalTensor2&)> f0 =
       std::bind(&TrifocalTensor2::mat0, std::placeholders::_1, boost::none);
   Matrix45 expected_H0 = numericalDerivative11(f0, test_tensor);
+
   Matrix45 actual_H0;
   Matrix2 result0 = test_tensor.mat0(actual_H0);
-  EXPECT(assert_equal(actual_H0, expected_H0));
+  EXPECT(assert_equal(expected_H0, actual_H0));
 
   // Second matrix
   std::function<Matrix2(const TrifocalTensor2&)> f1 =
@@ -227,7 +255,7 @@ TEST(TrifocalTensor2, tensorConversionJacobian) {
   Matrix45 expected_H1 = numericalDerivative11(f1, test_tensor);
   Matrix45 actual_H1;
   Matrix2 result1 = test_tensor.mat1(actual_H1);
-  EXPECT(assert_equal(actual_H1, expected_H1));
+  EXPECT(assert_equal(expected_H1, actual_H1));
 }
 
 int main() {

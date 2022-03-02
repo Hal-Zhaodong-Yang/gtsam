@@ -122,7 +122,7 @@ TrifocalTensor2 TrifocalTensor2::FromBearingMeasurements(
 TrifocalTensor2 TrifocalTensor2::FromProjectiveBearingMeasurements(
     const std::vector<Point2>& u, const std::vector<Point2>& v,
     const std::vector<Point2>& w) {
-  if (u.size() < 8) {
+  if (u.size() < 7) {
     throw std::invalid_argument(
         "Trifocal tensor computation requires at least 8 measurements");
   }
@@ -142,7 +142,7 @@ TrifocalTensor2 TrifocalTensor2::FromProjectiveBearingMeasurements(
       }
     }
   }
-  for (int row = u.size() - 8; row < 0; row++) {
+  for (int row = u.size(); row < 8; row++) {
     for (int col = 0; col < 8; col++) {
       A(row, col) = 0;
     }
@@ -273,7 +273,8 @@ Matrix2 TrifocalTensor2::mat0(OptionalJacobian<4, 5> Dtensor) const {
     Dtensor_wrt_intermedia(3, 5) = -intermedia(7);
     Dtensor_wrt_intermedia(3, 7) = -intermedia(5);
 
-    *Dtensor = Dtensor_wrt_intermedia * Dintermedia_wrt_minimal;
+    *Dtensor << Dtensor_wrt_intermedia * Dintermedia_wrt_minimal;
+
   }
 
   return matrix0;
@@ -328,7 +329,7 @@ Matrix2 TrifocalTensor2::mat1(OptionalJacobian<4, 5> Dtensor) const {
     Dtensor_wrt_intermedia(3, 5) = -intermedia(6);
     Dtensor_wrt_intermedia(3, 6) = -intermedia(5);
 
-    *Dtensor = Dtensor_wrt_intermedia * Dintermedia_wrt_minimal;
+    *Dtensor << Dtensor_wrt_intermedia * Dintermedia_wrt_minimal;
   }
 
   return matrix1;
@@ -357,9 +358,9 @@ Vector5 TrifocalTensor2::localCoordinates(
 
 bool TrifocalTensor2::equals(const TrifocalTensor2& other,
                              double tol) const {
-  return aRb_.equals(other.aRb()) && aRc_.equals(other.aRc()) &&
-         atb_.equals(other.atb()) && atc_.equals(other.atc()) &&
-         btc_.equals(other.btc());
+  return aRb_.equals(other.aRb(), tol) && aRc_.equals(other.aRc(), tol) &&
+         atb_.equals(other.atb(), tol) && atc_.equals(other.atc(), tol) &&
+         btc_.equals(other.btc(), tol);
 }
 
 }  // namespace gtsam
