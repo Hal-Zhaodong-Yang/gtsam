@@ -14,6 +14,7 @@
  */
 
 #include <gtsam/geometry/TrifocalTensor2.h>
+#include <gtsam/geometry/Pose2.h>
 
 #include <stdexcept>
 #include <vector>
@@ -28,6 +29,38 @@ std::vector<Point2> convertToProjective(const std::vector<Rot2>& rotations) {
     projectives.emplace_back(rotation.c() / rotation.s(), 1.0);
   }
   return projectives;
+}
+
+std::pair<Pose2, Pose2> posesFromMinimal(const Rot2& aRb, const Rot2& aRc,
+                                         const Rot2& atb, const Rot2& atc,
+                                         const Rot2& btc,
+                                         OptionalJacobian<6, 5> H = boost::none) {
+  // TODO: this notation is not correct: bTw should accept bRa, change to wTb
+  // and use inverse().
+  Pose2 bTw(aRb, Point2(-cos(atb.theta() - aRb.theta()),
+                             -sin(atb.theta() - aRb.theta())));
+  double lambda = sin(btc.theta() + aRb.theta() - atb.theta()) /
+                  sin(btc.theta() + aRb.theta() - atc.theta());
+  Pose2 cTw(aRc, -1 * lambda *
+                     Point2(cos(atc.theta() - aRc.theta()),
+                            sin(atc.theta() - aRc.theta())));
+  return std::make_pair(bTw, cTw);
+}
+
+std::pair<Matrix2, Matrix2> tensorFromPose(const Pose2& bTw, const Pose2& cTw) {
+  Point2 ctw = cTw.translation(), btw = bTw.translation();
+  // TODO: another notational incosistency here.
+  Rot2 wRb = bTw.rotation(), wRc = cTw.rotation();
+  Matrix2 mat0, mat1;
+  mat0(0, 0) = ctw.y() * wRb.s() - btw.y() * wRc.s();
+  mat0(0, 1) = -ctw.x() * wRb.s() - btw.y() * wRc.c();
+  mat0(1, 0) = ctw.y() * wRb.c() + btw.x() * wRc.s();
+  mat0(1, 1) = -ctw.x() * wRb.c() + btw.x() * wRc.c();
+  mat1(0, 0) = -ctw.y() * wRb.c() + btw.y() * wRc.c();
+  mat1(0, 1) = ctw.x() * wRb.c() - btw.y() * wRc.s();
+  mat1(1, 0) = ctw.y() * wRb.s() - btw.x() * wRc.c();
+  mat1(1, 1) = -ctw.x() * wRb.s() + btw.x() * wRc.s();
+  return std::make_pair(mat0, mat1);
 }
 
 // this function is intermediate calculation of trifocal matrix from trifocal
@@ -108,24 +141,25 @@ Vector9 intermediaFromMinimal(const Rot2& theta_prime,
 
   return intermedia_function;
 }
+
 Rot2 retractWithRot2(const Rot2& r, const Vector5& v, int idx,
                      OptionalJacobian<5, 5> Dtensor,
                      OptionalJacobian<5, 5> Dv) {
-  OptionalJacobian<1, 1> Drot2, Dv1;
+  Matrix1 Drot2, Dv1;
   Vector1 v1 = v.block<1, 1>(idx, idx);
   Rot2 result = r.retract(v1, Drot2, Dv1);
-  if (Dtensor) Dtensor->block<1, 1>(idx, idx) = *Drot2;
-  if (Dv) Dv->block<1, 1>(idx, idx) = *Dv1;
+  if (Dtensor) Dtensor->block<1, 1>(idx, idx) = Drot2;
+  if (Dv) Dv->block<1, 1>(idx, idx) = Dv1;
   return result;
 }
 
 Vector1 localCoordinatesRot2(const Rot2& this_rot, const Rot2& other, int idx,
                              OptionalJacobian<5, 5> Dtensor,
                              OptionalJacobian<5, 5> Dother) {
-  OptionalJacobian<1, 1> Dthis, Dother1;
+  Matrix1 Dthis, Dother1;
   Vector1 result = this_rot.localCoordinates(other, Dthis, Dother1);
-  if (Dtensor) Dtensor->block<1, 1>(idx, idx) = *Dthis;
-  if (Dother) Dother->block<1, 1>(idx, idx) = *Dother1;
+  if (Dtensor) Dtensor->block<1, 1>(idx, idx) = Dthis;
+  if (Dother) Dother->block<1, 1>(idx, idx) = Dother1;
   return result;
 }
 
@@ -295,8 +329,9 @@ Matrix2 TrifocalTensor2::mat0(OptionalJacobian<4, 5> Dtensor) const {
 
     *Dtensor << Dtensor_wrt_intermedia * Dintermedia_wrt_minimal;
   }
-
-  return matrix0;
+  auto pose_pair = posesFromMinimal(aRb_, aRc_, atb_, atc_, btc_);
+  auto mat_pair = tensorFromPose(pose_pair.first, pose_pair.second);
+  return mat_pair.first;
 }
 
 Matrix2 TrifocalTensor2::mat1(OptionalJacobian<4, 5> Dtensor) const {
@@ -351,7 +386,9 @@ Matrix2 TrifocalTensor2::mat1(OptionalJacobian<4, 5> Dtensor) const {
     *Dtensor << Dtensor_wrt_intermedia * Dintermedia_wrt_minimal;
   }
 
-  return matrix1;
+  auto pose_pair = posesFromMinimal(aRb_, aRc_, atb_, atc_, btc_);
+  auto mat_pair = tensorFromPose(pose_pair.first, pose_pair.second);
+  return mat_pair.second;
 }
 
 void TrifocalTensor2::print(const std::string& s) const {
@@ -378,13 +415,13 @@ Vector5 TrifocalTensor2::localCoordinates(const TrifocalTensor2& other,
   Vector1 aRb_diff =
       localCoordinatesRot2(aRb_, other.aRb(), 0, Dtensor, Dother);
   Vector1 aRc_diff =
-      localCoordinatesRot2(aRc_, other.aRc(), 0, Dtensor, Dother);
+      localCoordinatesRot2(aRc_, other.aRc(), 1, Dtensor, Dother);
   Vector1 atb_diff =
-      localCoordinatesRot2(atb_, other.atb(), 0, Dtensor, Dother);
+      localCoordinatesRot2(atb_, other.atb(), 2, Dtensor, Dother);
   Vector1 atc_diff =
-      localCoordinatesRot2(atc_, other.atc(), 0, Dtensor, Dother);
+      localCoordinatesRot2(atc_, other.atc(), 3, Dtensor, Dother);
   Vector1 btc_diff =
-      localCoordinatesRot2(btc_, other.btc(), 0, Dtensor, Dother);
+      localCoordinatesRot2(btc_, other.btc(), 4, Dtensor, Dother);
   Vector5 result;
   result << aRb_diff[0], aRc_diff[0], atb_diff[0], atc_diff[0], btc_diff[0];
   return result;
