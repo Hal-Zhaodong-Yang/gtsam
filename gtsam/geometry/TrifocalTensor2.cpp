@@ -13,8 +13,8 @@
  * @author  Akshay Krishnan
  */
 
-#include <gtsam/geometry/TrifocalTensor2.h>
 #include <gtsam/geometry/Pose2.h>
+#include <gtsam/geometry/TrifocalTensor2.h>
 
 #include <stdexcept>
 #include <vector>
@@ -31,14 +31,13 @@ std::vector<Point2> convertToProjective(const std::vector<Rot2>& rotations) {
   return projectives;
 }
 
-std::pair<Pose2, Pose2> posesFromMinimal(const Rot2& aRb, const Rot2& aRc,
-                                         const Rot2& atb, const Rot2& atc,
-                                         const Rot2& btc,
-                                         OptionalJacobian<6, 5> H = boost::none) {
+std::pair<Pose2, Pose2> posesFromMinimal(
+    const Rot2& aRb, const Rot2& aRc, const Rot2& atb, const Rot2& atc,
+    const Rot2& btc, OptionalJacobian<6, 5> H = boost::none) {
   // TODO: this notation is not correct: bTw should accept bRa, change to wTb
   // and use inverse().
   Pose2 bTw(aRb, Point2(-cos(atb.theta() - aRb.theta()),
-                             -sin(atb.theta() - aRb.theta())));
+                        -sin(atb.theta() - aRb.theta())));
   double lambda = sin(btc.theta() + aRb.theta() - atb.theta()) /
                   sin(btc.theta() + aRb.theta() - atc.theta());
   Pose2 cTw(aRc, -1 * lambda *
@@ -146,10 +145,10 @@ Rot2 retractWithRot2(const Rot2& r, const Vector5& v, int idx,
                      OptionalJacobian<5, 5> Dtensor,
                      OptionalJacobian<5, 5> Dv) {
   Matrix1 Drot2, Dv1;
-  Vector1 v1 = v.block<1, 1>(idx, idx);
+  Vector1 v1(v[idx]);
   Rot2 result = r.retract(v1, Drot2, Dv1);
-  if (Dtensor) Dtensor->block<1, 1>(idx, idx) = Drot2;
-  if (Dv) Dv->block<1, 1>(idx, idx) = Dv1;
+  if (Dtensor) (*Dtensor)(idx, idx) = Drot2(0, 0);
+  if (Dv) (*Dv)(idx, idx) = Dv1(0, 0);
   return result;
 }
 
@@ -158,8 +157,8 @@ Vector1 localCoordinatesRot2(const Rot2& this_rot, const Rot2& other, int idx,
                              OptionalJacobian<5, 5> Dother) {
   Matrix1 Dthis, Dother1;
   Vector1 result = this_rot.localCoordinates(other, Dthis, Dother1);
-  if (Dtensor) Dtensor->block<1, 1>(idx, idx) = Dthis;
-  if (Dother) Dother->block<1, 1>(idx, idx) = Dother1;
+  if (Dtensor) (*Dtensor)(idx, idx) = Dthis(0, 0);
+  if (Dother) (*Dother)(idx, idx) = Dother1(0, 0);
   return result;
 }
 
@@ -401,6 +400,8 @@ void TrifocalTensor2::print(const std::string& s) const {
 TrifocalTensor2 TrifocalTensor2::retract(const Vector5& v,
                                          OptionalJacobian<5, 5> Dtensor,
                                          OptionalJacobian<5, 5> Dv) const {
+  if (Dtensor) (*Dtensor).setZero();
+  if (Dv) (*Dv).setZero();
   Rot2 aRb_sum = retractWithRot2(aRb_, v, 0, Dtensor, Dv);
   Rot2 aRc_sum = retractWithRot2(aRc_, v, 1, Dtensor, Dv);
   Rot2 atb_sum = retractWithRot2(atb_, v, 2, Dtensor, Dv);
@@ -412,6 +413,8 @@ TrifocalTensor2 TrifocalTensor2::retract(const Vector5& v,
 Vector5 TrifocalTensor2::localCoordinates(const TrifocalTensor2& other,
                                           OptionalJacobian<5, 5> Dtensor,
                                           OptionalJacobian<5, 5> Dother) const {
+  if (Dtensor) (*Dtensor).setZero();
+  if (Dother) (*Dother).setZero();
   Vector1 aRb_diff =
       localCoordinatesRot2(aRb_, other.aRb(), 0, Dtensor, Dother);
   Vector1 aRc_diff =
