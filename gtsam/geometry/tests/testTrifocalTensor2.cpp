@@ -18,6 +18,7 @@
 #include <gtsam/base/numericalDerivative.h>
 #include <gtsam/geometry/BearingRange.h>
 #include <gtsam/geometry/Pose2.h>
+#include <gtsam/geometry/Point3.h>
 #include <gtsam/geometry/TrifocalTensor2.h>
 
 #include <vector>
@@ -220,18 +221,18 @@ Rot2 tranformBearing(const TrifocalTensor2& tensor, const Rot2& theta_b,
 
 // test jacobian of transform()
 
-// TEST(TrifocalTensor2, transformJacobian) {
-//   trifocal::TrifocalTestData data = trifocal::getTestData();
-//   Rot2 theta_b = data.measurements[0][0], theta_c = data.measurements[1][0];
-//   std::function<Rot2(const TrifocalTensor2&)> f =
-//       std::bind(&tranformBearing, std::placeholders::_1, theta_b, theta_c);
+TEST(TrifocalTensor2, transformJacobian) {
+  trifocal::TrifocalTestData data = trifocal::getTestData();
+  Rot2 theta_b = data.measurements[0][0], theta_c = data.measurements[1][0];
+  std::function<Rot2(const TrifocalTensor2&)> f =
+      std::bind(&tranformBearing, std::placeholders::_1, theta_b, theta_c);
 
-//   Matrix15 expected_H = numericalDerivative11(f, data.gt_tensor);
+  Matrix15 expected_H = numericalDerivative11(f, data.gt_tensor);
 
-//   Matrix15 actual_H;
-//   Rot2 result = data.gt_tensor.transform(theta_b, theta_c, actual_H);
-//   EXPECT(assert_equal(expected_H, actual_H));
-// }
+  Matrix15 actual_H;
+  Rot2 result = data.gt_tensor.transform(theta_b, theta_c, actual_H);
+  EXPECT(assert_equal(expected_H, actual_H));
+}
 
 TEST(TrifocalTensor2, tensorConversionJacobian) {
   TrifocalTensor2 test_tensor = trifocal::getTestData().gt_tensor;
@@ -296,6 +297,63 @@ TEST(TrifocalTensor2, localCoordinatesJacobian) {
   EXPECT(assert_equal(retraction, actual_retraction));
   EXPECT(assert_equal(expected_Dtest, actual_Dtest));
   EXPECT(assert_equal(expected_Dnew, actual_Dnew));
+}
+
+TEST(TrifocalTensor2, getThirdPoint) {
+  Pose2 wTa;
+  Rot2 aRc = Rot2::fromDegrees(60);
+
+  Pose2 wTb(Rot2(), Point2(1, 0));
+  Rot2 bRc = Rot2::fromDegrees(120);
+  Point2 wtc = getThirdPoint(wTa, wTb, aRc, bRc, boost::none, boost::none,
+                             boost::none, boost::none);
+  Point2 wtc_expected(0.5, sqrt(3) / 2);
+  EXPECT(assert_equal(wtc_expected, wtc));
+}
+
+TEST(TrifocalTensor2, getThirdPoint2) {
+  Pose2 wTa;
+  Rot2 aRc = Rot2::fromDegrees(90);
+
+  Pose2 wTb(Rot2::fromDegrees(90), Point2(1, 0));
+  Rot2 bRc = Rot2::fromDegrees(45);
+  Point2 wtc = getThirdPoint(wTa, wTb, aRc, bRc, boost::none, boost::none,
+                             boost::none, boost::none);
+  Point2 wtc_expected(0, 1.0);
+  EXPECT(assert_equal(wtc_expected, wtc));
+}
+
+TEST(TrifocalTensor2, lineFromPoseJacobian) {
+  Pose2 wTa(Rot2::fromDegrees(20), Point2(2, 3));
+  Rot2 dir = Rot2::fromDegrees(-30);
+  std::function<Point3(const Pose2&, const Rot2&)> f0 =
+      std::bind(&lineFromPoseAndLocalDirection, std::placeholders::_1,
+                std::placeholders::_2, boost::none, boost::none);  
+  Matrix33 expected_Dpose = numericalDerivative21(f0, wTa, dir);
+  Matrix31 expected_Ddir = numericalDerivative22(f0, wTa, dir);
+
+  Matrix33 actual_Dpose;
+  Matrix31 actual_Ddir;
+  actual_Dpose.setZero();
+  Point3 result = lineFromPoseAndLocalDirection(wTa, dir, actual_Dpose, actual_Ddir);
+  EXPECT(assert_equal(expected_Ddir, actual_Ddir));
+  EXPECT(assert_equal(expected_Dpose, actual_Dpose));
+}
+
+TEST(TrifocalTensor2, get2DlineJacobian) {
+  Point2 p1(2, 3);
+  Point2 p2(3, 4);
+  std::function<Point3(const Point2&, const Point2&)> f0 =
+      std::bind(&get2Dline, std::placeholders::_1,
+                std::placeholders::_2, boost::none, boost::none);  
+  Matrix32 expected_Dp1 = numericalDerivative21(f0, p1, p2);
+  Matrix32 expected_Dp2 = numericalDerivative22(f0, p1, p2);
+
+  Matrix32 actual_Dp1;
+  Matrix32 actual_Dp2;
+  Point3 result = get2Dline(p1, p2, actual_Dp1, actual_Dp2);
+  EXPECT(assert_equal(expected_Dp1, actual_Dp1));
+  EXPECT(assert_equal(expected_Dp2, actual_Dp2));
 }
 
 int main() {

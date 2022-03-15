@@ -111,13 +111,23 @@ class DSFMap {
     }
     return sets;
   }
+
+  std::vector<KEY> roots() const {
+    std::vector<KEY> roots;
+    iterator it = entries_.begin();
+    for (; it != entries_.end(); it++) {
+      iterator root = find_(it);
+      roots.push_back(root->first);
+    }
+    return roots;
+  }
 };
 
 /// Small utility class for representing a wrappable pairs of ints.
-class IndexPair : public std::pair<size_t,size_t> {
+class IndexPair : public std::pair<size_t, size_t> {
  public:
-  inline IndexPair(): std::pair<size_t,size_t>(0,0) {}
-  inline IndexPair(size_t i, size_t j) : std::pair<size_t,size_t>(i,j) {}
+  inline IndexPair() : std::pair<size_t, size_t>(0, 0) {}
+  inline IndexPair(size_t i, size_t j) : std::pair<size_t, size_t>(i, j) {}
   inline size_t i() const { return first; };
   inline size_t j() const { return second; };
 };
@@ -125,7 +135,9 @@ class IndexPair : public std::pair<size_t,size_t> {
 typedef std::vector<IndexPair> IndexPairVector;
 typedef std::set<IndexPair> IndexPairSet;
 
-inline IndexPairVector IndexPairSetAsArray(IndexPairSet& set) { return IndexPairVector(set.begin(), set.end()); }
+inline IndexPairVector IndexPairSetAsArray(IndexPairSet& set) {
+  return IndexPairVector(set.begin(), set.end());
+}
 
 typedef std::map<IndexPair, IndexPairSet> IndexPairSetMap;
 typedef DSFMap<IndexPair> DSFMapIndexPair;

@@ -33,12 +33,13 @@ class IndexPair {
   size_t j() const;
 };
 
-template<KEY = {gtsam::IndexPair}>
+template <KEY = {gtsam::IndexPair}>
 class DSFMap {
   DSFMap();
   KEY find(const KEY& key) const;
   void merge(const KEY& x, const KEY& y);
   std::map<KEY, This::Set> sets();
+  std::vector<KEY> roots();
 };
 
 class IndexPairSet {

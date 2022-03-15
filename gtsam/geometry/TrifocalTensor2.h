@@ -134,6 +134,17 @@ class TrifocalTensor2 {
   Rot2 btc() const { return btc_; }
 };
 
+Point3 lineFromPoseAndLocalDirection(const Pose2& wTa, const Rot2& aRc,
+                                     OptionalJacobian<3, 3> DwTa,
+                                     OptionalJacobian<3, 1> DaRc);
+
+Point2 getThirdPoint(const Pose2& wTa, const Pose2& wTb, const Rot2& aRc,
+                     const Rot2& bRc, OptionalJacobian<2, 3> DwTa,
+                     OptionalJacobian<2, 3> DwTb, OptionalJacobian<2, 1> DaRc,
+                     OptionalJacobian<2, 1> DbRc);
+
+Point3 get2Dline(const Point2& p1, const Point2& p2, OptionalJacobian<3, 2> Dp1, OptionalJacobian<3,2> Dp2) ;
+
 template <>
 struct traits<TrifocalTensor2> : public internal::Manifold<TrifocalTensor2> {};
 

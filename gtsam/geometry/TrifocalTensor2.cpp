@@ -13,6 +13,7 @@
  * @author  Akshay Krishnan
  */
 
+#include <gtsam/geometry/Point3.h>
 #include <gtsam/geometry/Pose2.h>
 #include <gtsam/geometry/TrifocalTensor2.h>
 
@@ -29,6 +30,70 @@ std::vector<Point2> convertToProjective(const std::vector<Rot2>& rotations) {
     projectives.emplace_back(rotation.c() / rotation.s(), 1.0);
   }
   return projectives;
+}
+
+Point3 get2Dline(const Point2& p1, const Point2& p2, OptionalJacobian<3, 2> Dp1, OptionalJacobian<3,2> Dp2) {
+  const Point3 p1_projective(p1.x(), p1.y(), 1);
+  const Point3 p2_projective(p2.x(), p2.y(), 1);
+  Matrix33 Dp1p, Dp2p;
+  const Point3 line = cross(p1_projective, p2_projective, Dp1p, Dp2p);
+  if(Dp1) {
+    *Dp1 = Dp1p.topLeftCorner<3, 2>();
+  }
+  if(Dp2) {
+    *Dp2 = Dp2p.topLeftCorner<3, 2>();
+  }
+  return line;
+}
+
+Point3 lineFromPoseAndLocalDirection(const Pose2& wTa, const Rot2& aRc,
+                                     OptionalJacobian<3, 3> DwTa,
+                                     OptionalJacobian<3, 1> DaRc) {
+  Matrix21 Datc_aRc;
+  const Point2 atc = aRc.rotate(Point2(1, 0), Datc_aRc);
+  Matrix23 Dwtc_wTa;
+  Matrix22 Dwtc_atc;
+  const Point2 wtc = wTa.transformFrom(atc, Dwtc_wTa, Dwtc_atc);
+  
+  Matrix32 Dline_wta, Dline_wtc;
+  const Point3 line = get2Dline(wTa.translation(), wtc, Dline_wta, Dline_wtc);
+  if (DwTa) {
+    *DwTa = Dline_wtc * Dwtc_wTa;
+    DwTa->topLeftCorner(3, 2) += Dline_wta;
+  }
+  if (DaRc) {
+    *DaRc = Dline_wtc * Dwtc_atc * Datc_aRc;
+  }
+  return line;
+}
+
+Point2 fromHomogeneous(const Point3& p, OptionalJacobian<2, 3> H) {
+  if (H) {
+    *H << 1.0 / p.z(), 0.0, -p.x() / (p.z() * p.z()), 0.0, 1 / p.z(),
+        -p.y() / (p.z() * p.z());
+  }
+  return Point2(p.x() / p.z(), p.y() / p.z());
+}
+
+Point2 getThirdPoint(const Pose2& wTa, const Pose2& wTb, const Rot2& aRc,
+                     const Rot2& bRc, OptionalJacobian<2, 3> DwTa,
+                     OptionalJacobian<2, 3> DwTb, OptionalJacobian<2, 1> DaRc,
+                     OptionalJacobian<2, 1> DbRc) {
+  Matrix33 Dline_wTa, Dline_wTb;
+  Matrix31 Dline_aRc, Dline_bRc;
+  const Point3 wlc_a =
+      lineFromPoseAndLocalDirection(wTa, aRc, Dline_wTa, Dline_aRc);
+  const Point3 wlc_b =
+      lineFromPoseAndLocalDirection(wTb, bRc, Dline_wTb, Dline_bRc);
+  Matrix33 Dcross_wlca, Dcross_wlcb;
+  const Point3 wtc_projective = cross(wlc_a, wlc_b, Dcross_wlca, Dcross_wlcb);
+  Matrix23 Dwtc_projective;
+  const Point2 wtc = fromHomogeneous(wtc_projective, Dwtc_projective);
+  if (DwTa) *DwTa = Dwtc_projective * Dcross_wlca * Dline_wTa;
+  if (DwTb) *DwTb = Dwtc_projective * Dcross_wlcb * Dline_wTb;
+  if (DaRc) *DaRc = Dwtc_projective * Dcross_wlca * Dline_aRc;
+  if (DbRc) *DbRc = Dwtc_projective * Dcross_wlcb * Dline_bRc;
+  return wtc;
 }
 
 std::pair<Pose2, Pose2> posesFromMinimal(
@@ -269,12 +334,34 @@ TrifocalTensor2 TrifocalTensor2::FromTensor(const Matrix2& matrix0,
 // third views.
 Rot2 TrifocalTensor2::transform(const Rot2& vZp, const Rot2& wZp,
                                 OptionalJacobian<1, 5> Dtensor) const {
-  Rot2 uZp;
-  Vector2 v_measurement, w_measurement;
-  v_measurement << vZp.c(), vZp.s();
-  w_measurement << wZp.c(), wZp.s();
-  return Rot2::atan2(dot(mat0() * w_measurement, v_measurement),
-                     -dot(mat1() * w_measurement, v_measurement));
+  Matrix21 Datb;
+  Point2 unit_atb = atb_.rotate(Point2(1, 0), Datb);
+  Pose2 aTb(aRb_, unit_atb);
+  Matrix23 Datc_aTb;
+  Matrix21 Datc_atc, Datc_btc;
+  Pose2 aTc(aRc_, getThirdPoint(Pose2(), aTb, atc_, btc_, boost::none, Datc_aTb,
+                                Datc_atc , Datc_btc));
+
+  Matrix23 Dp_aTb, Dp_aTc;
+  Point2 w_p = getThirdPoint(aTb, aTc, vZp, wZp, Dp_aTb, Dp_aTc, boost::none,
+                             boost::none);
+  Matrix12 Dbearing_wp;
+  Rot2 uZp = Rot2::relativeBearing(w_p, Dbearing_wp);
+  if (Dtensor) {
+    Matrix13 DaTc = Dbearing_wp * Dp_aTc;
+    Matrix13 DaTb = Dbearing_wp * Dp_aTb + DaTc.topRightCorner(1, 2) * Datc_aTb;
+    // aRb
+    (*Dtensor)(0) = DaTb(0);
+    // aRc
+    (*Dtensor)(1) = DaTc(0);
+    // atb
+    (*Dtensor)(2) = (DaTb.topRightCorner(1, 2) * Datb)(0);
+    // atc
+    (*Dtensor)(3) = (DaTc.topRightCorner(1, 2) * Datc_atc)(0);
+    // btc
+    (*Dtensor)(4) = (DaTc.topRightCorner(1, 2) * Datc_btc)(0);
+  }
+  return uZp;
 }
 
 Matrix2 TrifocalTensor2::mat0(OptionalJacobian<4, 5> Dtensor) const {
