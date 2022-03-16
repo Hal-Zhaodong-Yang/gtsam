@@ -102,6 +102,9 @@ class TrifocalTensor2 {
   Point2 transform(const Point2& vZp, const Point2& wZp,
                    OptionalJacobian<2, 5> Dtensor = boost::none) const;
 
+  std::pair<Matrix2, Matrix2> mat(
+      OptionalJacobian<8, 5> Dtensor = boost::none) const;
+
   // Accessors for the two matrices that comprise the trifocal tensor.
   Matrix2 mat0(OptionalJacobian<4, 5> Dtensor = boost::none) const;
   Matrix2 mat1(OptionalJacobian<4, 5> Dtensor = boost::none) const;

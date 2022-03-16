@@ -31,6 +31,34 @@ std::vector<Point2> convertToProjective(const std::vector<Rot2>& rotations) {
   return projectives;
 }
 
+double calTrifocalFromIntermedia(double x1, double x2, double x3, double x4,
+                                 double x5) {
+  return x1 * x2 * x3 + x4 * x5;
+}
+
+Matrix89 calJacobianWrtIntermedia(const Vector9& f) {
+  Matrix89 Dtensor_wrt_intermedia;
+  // Dtensor_wrt_intermedia.setZero(8, 9);
+  Dtensor_wrt_intermedia.block(0, 0, 1, 9) << -f(8) * f(2), 0, -f(8) * f(0), 0,
+      f(6), 0, f(4), 0, -f(0) * f(2);
+  Dtensor_wrt_intermedia.block(1, 0, 1, 9) << 0, f(8) * f(2), f(8) * f(1), 0,
+      f(7), 0, 0, f(4), f(1) * f(2);
+  Dtensor_wrt_intermedia.block(2, 0, 1, 9) << -f(8) * f(3), 0, 0, -f(8) * f(0),
+      0, -f(6), -f(5), 0, -f(0) * f(3);
+  Dtensor_wrt_intermedia.block(3, 0, 1, 9) << 0, f(8) * f(3), 0, f(8) * f(1), 0,
+      -f(7), 0, -f(5), f(1) * f(3);
+  Dtensor_wrt_intermedia.block(4, 0, 1, 9) << f(8) * f(3), 0, 0, f(8) * f(0),
+      -f(7), 0, 0, -f(4), f(0) * f(3);
+  Dtensor_wrt_intermedia.block(5, 0, 1, 9) << 0, -f(8) * f(3), 0, -f(8) * f(1),
+      f(6), 0, f(4), 0, -f(1) * f(3);
+  Dtensor_wrt_intermedia.block(6, 0, 1, 9) << -f(8) * f(2), 0, -f(8) * f(0), 0,
+      0, f(7), 0, f(5), -f(0) * f(2);
+  Dtensor_wrt_intermedia.block(7, 0, 1, 9) << 0, f(8) * f(2), f(8) * f(1), 0, 0,
+      -f(6), -f(5), 0, f(1) * f(2);
+
+  return Dtensor_wrt_intermedia;
+}
+
 std::pair<Pose2, Pose2> posesFromMinimal(
     const Rot2& aRb, const Rot2& aRc, const Rot2& atb, const Rot2& atc,
     const Rot2& btc, OptionalJacobian<6, 5> H = boost::none) {
@@ -72,24 +100,23 @@ Vector9 intermediaFromMinimal(const Rot2& theta_prime,
                               const Rot2& theta1, const Rot2& theta2,
                               const Rot2& theta3,
                               OptionalJacobian<9, 5> Dtensor) {
-  Vector9 intermedia_function;
+  Vector9 f;
   Matrix jacobian(9, 5);
   // 9 variables which appear in formula of trifocal matrix repeatedly
-  intermedia_function(0) = sin(theta2.theta() - theta_double_prime.theta());
-  intermedia_function(1) = cos(theta2.theta() - theta_double_prime.theta());
+  f(0) = (theta2 * theta_double_prime.inverse()).s();
+  f(1) = (theta2 * theta_double_prime.inverse()).c();
 
-  intermedia_function(2) = theta_prime.s();
-  intermedia_function(3) = theta_prime.c();
+  f(2) = theta_prime.s();
+  f(3) = theta_prime.c();
 
-  intermedia_function(4) = sin(-theta_prime.theta() + theta1.theta());
-  intermedia_function(5) = cos(-theta_prime.theta() + theta1.theta());
+  f(4) = (theta_prime.inverse() * theta1).s();
+  f(5) = (theta_prime.inverse() * theta1).c();
 
-  intermedia_function(6) = theta_double_prime.s();
-  intermedia_function(7) = theta_double_prime.c();
+  f(6) = theta_double_prime.s();
+  f(7) = theta_double_prime.c();
 
-  intermedia_function(8) =
-      sin(theta3.theta() + theta_prime.theta() - theta1.theta()) /
-      sin(theta3.theta() + theta_prime.theta() - theta2.theta());
+  f(8) = (theta3 * theta_prime * theta1.inverse()).s() /
+         (theta3 * theta_prime * theta2.inverse()).s();
 
   // jacobian of the 9 variables wrt 5 angles (minimal representation of
   // trifocal tensor)
@@ -99,46 +126,43 @@ Vector9 intermediaFromMinimal(const Rot2& theta_prime,
         jacobian(i, j) = 0;
       }
     }
-    jacobian(0, 1) = -cos(theta2.theta() - theta_double_prime.theta());
-    jacobian(1, 1) = sin(theta2.theta() - theta_double_prime.theta());
-    jacobian(0, 3) = cos(theta2.theta() - theta_double_prime.theta());
-    jacobian(1, 3) = -sin(theta2.theta() - theta_double_prime.theta());
+    jacobian(0, 1) = -(theta2 * theta_double_prime.inverse()).c();
+    jacobian(1, 1) = (theta2 * theta_double_prime.inverse()).s();
+    jacobian(0, 3) = (theta2 * theta_double_prime.inverse()).c();
+    jacobian(1, 3) = -(theta2 * theta_double_prime.inverse()).s();
 
     jacobian(2, 0) = theta_prime.c();
     jacobian(3, 0) = -theta_prime.s();
 
-    jacobian(4, 0) = -cos(-theta_prime.theta() + theta1.theta());
-    jacobian(5, 0) = sin(-theta_prime.theta() + theta1.theta());
-    jacobian(4, 2) = cos(-theta_prime.theta() + theta1.theta());
-    jacobian(5, 2) = -sin(-theta_prime.theta() + theta1.theta());
+    jacobian(4, 0) = -(theta_prime.inverse() * theta1).c();
+    jacobian(5, 0) = (theta_prime.inverse() * theta1).s();
+    jacobian(4, 2) = (theta_prime.inverse() * theta1).c();
+    jacobian(5, 2) = -(theta_prime.inverse() * theta1).s();
 
     jacobian(6, 1) = theta_double_prime.c();
     jacobian(7, 1) = -theta_double_prime.s();
 
-    jacobian(8, 0) =
-        (cos(theta3.theta() + theta_prime.theta() - theta1.theta()) *
-             sin(theta3.theta() + theta_prime.theta() - theta2.theta()) -
-         sin(theta3.theta() + theta_prime.theta() - theta1.theta()) *
-             cos(theta3.theta() + theta_prime.theta() - theta2.theta())) /
-        (sin(theta3.theta() + theta_prime.theta() - theta2.theta()) *
-         sin(theta3.theta() + theta_prime.theta() - theta2.theta()));
+    jacobian(8, 0) = ((theta3 * theta_prime * theta1.inverse()).c() *
+                          (theta3 * theta_prime * theta2.inverse()).s() -
+                      (theta3 * theta_prime * theta1.inverse()).s() *
+                          (theta3 * theta_prime * theta2.inverse()).c()) /
+                     ((theta3 * theta_prime * theta2.inverse()).s() *
+                      (theta3 * theta_prime * theta2.inverse()).s());
 
-    jacobian(8, 2) =
-        -cos(theta3.theta() + theta_prime.theta() - theta1.theta()) /
-        sin(theta3.theta() + theta_prime.theta() - theta2.theta());
+    jacobian(8, 2) = -(theta3 * theta_prime * theta1.inverse()).c() /
+                     (theta3 * theta_prime * theta2.inverse()).s();
 
-    jacobian(8, 3) =
-        sin(theta3.theta() + theta_prime.theta() - theta1.theta()) *
-        cos(theta3.theta() + theta_prime.theta() - theta2.theta()) /
-        (sin(theta3.theta() + theta_prime.theta() - theta2.theta()) *
-         sin(theta3.theta() + theta_prime.theta() - theta2.theta()));
+    jacobian(8, 3) = (theta3 * theta_prime * theta1.inverse()).s() *
+                     (theta3 * theta_prime * theta2.inverse()).c() /
+                     ((theta3 * theta_prime * theta2.inverse()).s() *
+                      (theta3 * theta_prime * theta2.inverse()).s());
 
     jacobian(8, 4) = jacobian(8, 0);
 
     *Dtensor << jacobian;
   }
 
-  return intermedia_function;
+  return f;
 }
 
 Rot2 retractWithRot2(const Rot2& r, const Vector5& v, int idx,
@@ -277,9 +301,47 @@ Rot2 TrifocalTensor2::transform(const Rot2& vZp, const Rot2& wZp,
                      -dot(mat1() * w_measurement, v_measurement));
 }
 
+std::pair<Matrix2, Matrix2> TrifocalTensor2::mat(
+    OptionalJacobian<8, 5> Dtensor) const {
+  Matrix2 matrix0, matrix1;
+  Matrix42 trifocal_matrix;
+
+  Matrix Dintermedia_wrt_minimal(9, 5);
+
+  Vector4 vec0;
+
+  Vector9 f = intermediaFromMinimal(aRb_, aRc_, atb_, atc_, btc_,
+                                    Dintermedia_wrt_minimal);
+
+  // trifocal matrix formula using intermediate variables
+  matrix0(0, 0) = calTrifocalFromIntermedia(-f(8), f(0), f(2), f(4), f(6));
+  matrix0(0, 1) = calTrifocalFromIntermedia(f(8), f(1), f(2), f(4), f(7));
+  matrix0(1, 0) = calTrifocalFromIntermedia(-f(8), f(0), f(3), -f(5), f(6));
+  matrix0(1, 1) = calTrifocalFromIntermedia(f(8), f(1), f(3), -f(5), f(7));
+  matrix1(0, 0) = calTrifocalFromIntermedia(f(8), f(0), f(3), -f(4), f(7));
+  matrix1(0, 1) = calTrifocalFromIntermedia(-f(8), f(1), f(3), f(4), f(6));
+  matrix1(1, 0) = calTrifocalFromIntermedia(-f(8), f(0), f(2), f(5), f(7));
+  matrix1(1, 1) = calTrifocalFromIntermedia(f(8), f(1), f(2), -f(5), f(6));
+  trifocal_matrix.block(0, 0, 2, 2) << matrix0;
+  trifocal_matrix.block(2, 0, 2, 2) << matrix1;
+
+  if (Dtensor) {
+    Matrix Dtensor_wrt_intermedia(8, 9);
+    Dtensor_wrt_intermedia = calJacobianWrtIntermedia(f);
+
+    *Dtensor << Dtensor_wrt_intermedia * Dintermedia_wrt_minimal;
+  }
+
+  // vec0 << matrix0(0, 0), matrix0(0, 1), matrix0(1, 0), matrix0(1, 1);
+
+  return std::make_pair(matrix0, matrix1);
+}
+
 Matrix2 TrifocalTensor2::mat0(OptionalJacobian<4, 5> Dtensor) const {
   Matrix2 matrix0;
   Matrix Dintermedia_wrt_minimal(9, 5);
+
+  Vector4 vec0;
 
   Vector9 intermedia = intermediaFromMinimal(aRb_, aRc_, atb_, atc_, btc_,
                                              Dintermedia_wrt_minimal);
@@ -328,6 +390,9 @@ Matrix2 TrifocalTensor2::mat0(OptionalJacobian<4, 5> Dtensor) const {
 
     *Dtensor << Dtensor_wrt_intermedia * Dintermedia_wrt_minimal;
   }
+
+  vec0 << matrix0(0, 0), matrix0(0, 1), matrix0(1, 0), matrix0(1, 1);
+
   auto pose_pair = posesFromMinimal(aRb_, aRc_, atb_, atc_, btc_);
   auto mat_pair = tensorFromPose(pose_pair.first, pose_pair.second);
   return mat_pair.first;

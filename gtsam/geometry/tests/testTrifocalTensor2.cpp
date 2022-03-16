@@ -77,6 +77,21 @@ TrifocalTestData getTestData() {
   }
   return data;
 }
+// wrapper function for unit test of tensorConversionJacobian
+Vector8 tensorPairToVector(const TrifocalTensor2& tensor) {
+  Vector8 trifocal_tensor;
+  Matrix2 matrix0, matrix1;
+  matrix0 = tensor.mat().first;
+  matrix1 = tensor.mat().second;
+  for (int i = 0; i < 2; i++) {
+    for (int j = 0; j < 2; j++) {
+      trifocal_tensor(2 * i + j) = matrix0(i, j);
+      trifocal_tensor(2 * i + j + 4) = matrix1(i, j);
+    }
+  }
+
+  return trifocal_tensor;
+}
 
 }  // namespace trifocal
 
@@ -112,12 +127,17 @@ TEST(TrifocalTensor2, tensorRegression) {
       data.measurements[0], data.measurements[1], data.measurements[2]);
 
   Matrix2 expected_tensor_mat0, expected_tensor_mat1;
+  auto expected_tensor_pair = test_tensor.mat();
 
-  expected_tensor_mat0 = test_tensor.mat0();
-  expected_tensor_mat1 = test_tensor.mat1();
+  expected_tensor_mat0 = expected_tensor_pair.first;
+  expected_tensor_mat1 = expected_tensor_pair.second;
 
-  Matrix2 actual_tensor_mat0 = T.mat0();
-  Matrix2 actual_tensor_mat1 = T.mat1();
+  auto actual_mat_pair = T.mat();
+
+  // Matrix2 actual_tensor_mat0 = T.mat0();
+  // Matrix2 actual_tensor_mat1 = T.mat1();
+  Matrix2 actual_tensor_mat0 = actual_mat_pair.first;
+  Matrix2 actual_tensor_mat1 = actual_mat_pair.second;
 
   double lambda = expected_tensor_mat0(0, 0) / actual_tensor_mat0(0, 0);
 
@@ -236,24 +256,34 @@ Rot2 tranformBearing(const TrifocalTensor2& tensor, const Rot2& theta_b,
 TEST(TrifocalTensor2, tensorConversionJacobian) {
   TrifocalTensor2 test_tensor = trifocal::getTestData().gt_tensor;
 
-  // First matrix
+  // // First matrix
 
-  std::function<Matrix2(const TrifocalTensor2&)> f0 =
-      std::bind(&TrifocalTensor2::mat0, std::placeholders::_1, boost::none);
-  Matrix45 expected_H0 = numericalDerivative11(f0, test_tensor);
+  // std::function<Matrix2(const TrifocalTensor2&)> f0 =
+  //     std::bind(&TrifocalTensor2::mat0, std::placeholders::_1, boost::none);
+  // Matrix45 expected_H0 = numericalDerivative11(f0, test_tensor);
 
-  Matrix45 actual_H0;
-  Matrix2 result0 = test_tensor.mat0(actual_H0);
-  EXPECT(assert_equal(expected_H0, actual_H0));
+  // Matrix45 actual_H0;
+  // Matrix2 result0 = test_tensor.mat0(actual_H0);
+  // EXPECT(assert_equal(expected_H0, actual_H0));
 
-  // Second matrix
-  std::function<Matrix2(const TrifocalTensor2&)> f1 =
-      std::bind(&TrifocalTensor2::mat1, std::placeholders::_1, boost::none);
+  // // Second matrix
+  // std::function<Matrix2(const TrifocalTensor2&)> f1 =
+  //     std::bind(&TrifocalTensor2::mat1, std::placeholders::_1, boost::none);
 
-  Matrix45 expected_H1 = numericalDerivative11(f1, test_tensor);
-  Matrix45 actual_H1;
-  Matrix2 result1 = test_tensor.mat1(actual_H1);
-  EXPECT(assert_equal(expected_H1, actual_H1));
+  // Matrix45 expected_H1 = numericalDerivative11(f1, test_tensor);
+  // Matrix45 actual_H1;
+  // Matrix2 result1 = test_tensor.mat1(actual_H1);
+  // EXPECT(assert_equal(expected_H1, actual_H1));
+
+  // test matrix pair jacobian
+
+  std::function<Vector8(const TrifocalTensor2&)> f2 =
+      std::bind(trifocal::tensorPairToVector, std::placeholders::_1);
+  Matrix85 expected_H_pair = numericalDerivative11(f2, test_tensor);
+
+  Matrix85 actual_H_pair;
+  auto matrix_pair = test_tensor.mat(actual_H_pair);
+  EXPECT(assert_equal(expected_H_pair, actual_H_pair, 1e-7));
 }
 
 TEST(TrifocalTensor2, retractJacobian) {
