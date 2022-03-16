@@ -44,70 +44,78 @@ class TrifocalTensor2 {
                   const Rot2& atc, const Rot2& btc)
       : aRb_(aRb), aRc_(aRc), atb_(atb), atc_(atc), btc_(btc) {}
 
-  // Copy constructor
-  TrifocalTensor2(const TrifocalTensor2& T)
-      : TrifocalTensor2(T.aRb_, T.aRc_, T.atb_, T.atc_, T.btc_) {}
+  //   // Copy constructor
+  //   TrifocalTensor2(const TrifocalTensor2& T)
+  //       : TrifocalTensor2(T.aRb_, T.aRc_, T.atb_, T.atc_, T.btc_) {}
 
-  // Construct from the two 2x2 matrices that form the tensor. The jacobian is
-  // with respect to two input matrices.
+  /**
+   * @brief Construct from the 2x2x2 tensor (a 2x2 matrix pair).
+   *
+   * @param matrix0 tensor[0, :, :]
+   * @param matrix1 tensor[1, :, :]
+   * @param Dtensor optional jacobian with respect to tensor
+   * @return TrifocalTensor2
+   */
   static TrifocalTensor2 FromTensor(
       const Matrix2& matrix0, const Matrix2& matrix1,
       OptionalJacobian<5, 8> Dtensor = boost::none);
 
   /**
-   * @brief Estimates a tensor from 8 bearing measurements in 3 cameras. Throws
-   * a runtime error if the size of inputs are unequal or less than 8.
+   * @brief Estimates a tensor from at least 7 bearing measurements in 3
+   * cameras. Throws a runtime error if the size of inputs are unequal or less
+   * than 7.
    *
-   * @param u bearing measurement in camera u.
-   * @param v bearing measurement in camera v.
-   * @param w bearing measurement in camera w.
+   * @param bearings_a bearing measurement in camera a.
+   * @param bearings_b bearing measurement in camera b.
+   * @param bearings_c bearing measurement in camera c.
    * @return Tensor estimated from the measurements.
    */
   static TrifocalTensor2 FromBearingMeasurements(
-      const std::vector<Rot2>& bearings_u, const std::vector<Rot2>& bearings_v,
-      const std::vector<Rot2>& bearings_w);
+      const std::vector<Rot2>& bearings_a, const std::vector<Rot2>& bearings_b,
+      const std::vector<Rot2>& bearings_c);
 
   /**
    * @brief Estimates a tensor from 8 projective measurements in 3 cameras.
    * Throws a runtime error if the size of inputs are unequal or less than 8.
    *
-   * @param u projective 1D bearing measurement in camera u.
-   * @param v projective 1D bearing measurement in camera v.
-   * @param w projective 1D bearing measurement in camera w.
+   * @param a projective 1D bearing measurement in camera a.
+   * @param b projective 1D bearing measurement in camera b.
+   * @param c projective 1D bearing measurement in camera c.
    * @return tensor estimated from the measurements.
    */
   static TrifocalTensor2 FromProjectiveBearingMeasurements(
-      const std::vector<Point2>& u, const std::vector<Point2>& v,
-      const std::vector<Point2>& w);
+      const std::vector<Point2>& a, const std::vector<Point2>& b,
+      const std::vector<Point2>& c);
 
   /**
-   * @brief Computes the bearing in camera 'u' given bearing measurements in
-   * cameras 'v' and 'w'.
+   * @brief Computes the bearing in camera 'a' given bearing measurements in
+   * cameras 'b' and 'c'.
    *
-   * @param vZp bearing measurement in camera v
-   * @param wZp bearing measurement in camera w
-   * @return bearing measurement in camera u
+   * @param bZp bearing measurement in camera b
+   * @param cZp bearing measurement in camera c
+   * @return bearing measurement in camera a
    */
-  Rot2 transform(const Rot2& vZp, const Rot2& wZp,
+  Rot2 transform(const Rot2& bZp, const Rot2& cZp,
                  OptionalJacobian<1, 5> Dtensor = boost::none) const;
 
   /**
-   * @brief Computes the bearing in camera 'u' from that of cameras 'v' and 'w',
+   * @brief Computes the bearing in camera 'a' from that of cameras 'b' and 'c',
    * in projective coordinates.
    *
-   * @param vZp projective bearing measurement in camera v
-   * @param wZp projective bearing measurement in camera w
-   * @return projective bearing measurement in camera u
+   * @param bZp projective bearing measurement in camera b
+   * @param cZp projective bearing measurement in camera c
+   * @return projective bearing measurement in camera a
    */
-  Point2 transform(const Point2& vZp, const Point2& wZp,
+  Point2 transform(const Point2& bZp, const Point2& cZp,
                    OptionalJacobian<2, 5> Dtensor = boost::none) const;
 
-  std::pair<Matrix2, Matrix2> mat(
+  /**
+   * @brief Returns the 2x2x2 tensor representation.
+   * 
+   * @param Dtensor jacobian of output with respect to manifold element.
+   */
+  std::pair<Matrix2, Matrix2> tensor(
       OptionalJacobian<8, 5> Dtensor = boost::none) const;
-
-  // Accessors for the two matrices that comprise the trifocal tensor.
-  Matrix2 mat0(OptionalJacobian<4, 5> Dtensor = boost::none) const;
-  Matrix2 mat1(OptionalJacobian<4, 5> Dtensor = boost::none) const;
 
   // Map (this tensor + v) from tangent space to the manifold. v is an increment
   // in tangent space.
@@ -121,7 +129,8 @@ class TrifocalTensor2 {
                            OptionalJacobian<5, 5> Dother = boost::none) const;
 
   /**
-   * Print R, a, b
+   * @brief the 5 dimensional minimal representation.
+   * 
    * @param s: optional starting string
    */
   void print(const std::string& s = "") const;

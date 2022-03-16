@@ -38,7 +38,6 @@ double calTrifocalFromIntermedia(double x1, double x2, double x3, double x4,
 
 Matrix89 calJacobianWrtIntermedia(const Vector9& f) {
   Matrix89 Dtensor_wrt_intermedia;
-  // Dtensor_wrt_intermedia.setZero(8, 9);
   Dtensor_wrt_intermedia.block(0, 0, 1, 9) << -f(8) * f(2), 0, -f(8) * f(0), 0,
       f(6), 0, f(4), 0, -f(0) * f(2);
   Dtensor_wrt_intermedia.block(1, 0, 1, 9) << 0, f(8) * f(2), f(8) * f(1), 0,
@@ -57,37 +56,6 @@ Matrix89 calJacobianWrtIntermedia(const Vector9& f) {
       -f(6), -f(5), 0, f(1) * f(2);
 
   return Dtensor_wrt_intermedia;
-}
-
-std::pair<Pose2, Pose2> posesFromMinimal(
-    const Rot2& aRb, const Rot2& aRc, const Rot2& atb, const Rot2& atc,
-    const Rot2& btc, OptionalJacobian<6, 5> H = boost::none) {
-  // TODO: this notation is not correct: bTw should accept bRa, change to wTb
-  // and use inverse().
-  Pose2 bTw(aRb, Point2(-cos(atb.theta() - aRb.theta()),
-                        -sin(atb.theta() - aRb.theta())));
-  double lambda = sin(btc.theta() + aRb.theta() - atb.theta()) /
-                  sin(btc.theta() + aRb.theta() - atc.theta());
-  Pose2 cTw(aRc, -1 * lambda *
-                     Point2(cos(atc.theta() - aRc.theta()),
-                            sin(atc.theta() - aRc.theta())));
-  return std::make_pair(bTw, cTw);
-}
-
-std::pair<Matrix2, Matrix2> tensorFromPose(const Pose2& bTw, const Pose2& cTw) {
-  Point2 ctw = cTw.translation(), btw = bTw.translation();
-  // TODO: another notational incosistency here.
-  Rot2 wRb = bTw.rotation(), wRc = cTw.rotation();
-  Matrix2 mat0, mat1;
-  mat0(0, 0) = ctw.y() * wRb.s() - btw.y() * wRc.s();
-  mat0(0, 1) = -ctw.x() * wRb.s() - btw.y() * wRc.c();
-  mat0(1, 0) = ctw.y() * wRb.c() + btw.x() * wRc.s();
-  mat0(1, 1) = -ctw.x() * wRb.c() + btw.x() * wRc.c();
-  mat1(0, 0) = -ctw.y() * wRb.c() + btw.y() * wRc.c();
-  mat1(0, 1) = ctw.x() * wRb.c() - btw.y() * wRc.s();
-  mat1(1, 0) = ctw.y() * wRb.s() - btw.x() * wRc.c();
-  mat1(1, 1) = -ctw.x() * wRb.s() + btw.x() * wRc.s();
-  return std::make_pair(mat0, mat1);
 }
 
 // this function is intermediate calculation of trifocal matrix from trifocal
@@ -188,38 +156,38 @@ Vector1 localCoordinatesRot2(const Rot2& this_rot, const Rot2& other, int idx,
 
 // Construct from 8 bearing measurements.
 TrifocalTensor2 TrifocalTensor2::FromBearingMeasurements(
-    const std::vector<Rot2>& bearings_u, const std::vector<Rot2>& bearings_v,
-    const std::vector<Rot2>& bearings_w) {
+    const std::vector<Rot2>& bearings_a, const std::vector<Rot2>& bearings_b,
+    const std::vector<Rot2>& bearings_c) {
   return TrifocalTensor2::FromProjectiveBearingMeasurements(
-      convertToProjective(bearings_u), convertToProjective(bearings_v),
-      convertToProjective(bearings_w));
+      convertToProjective(bearings_a), convertToProjective(bearings_b),
+      convertToProjective(bearings_c));
 }
 
 // Construct from 8 bearing measurements expressed in projective coordinates.
 TrifocalTensor2 TrifocalTensor2::FromProjectiveBearingMeasurements(
-    const std::vector<Point2>& u, const std::vector<Point2>& v,
-    const std::vector<Point2>& w) {
-  if (u.size() < 7) {
+    const std::vector<Point2>& a, const std::vector<Point2>& b,
+    const std::vector<Point2>& c) {
+  if (a.size() < 7) {
     throw std::invalid_argument(
-        "Trifocal tensor computation requires at least 8 measurements");
+        "Trifocal tensor computation requires at least 7 measurements");
   }
-  if (u.size() != v.size() || v.size() != w.size()) {
+  if (a.size() != b.size() || b.size() != c.size()) {
     throw std::invalid_argument(
         "Number of input measurements in 3 cameras must be same");
   }
 
   // Create the system matrix A.
-  Matrix A(u.size() > 8 ? u.size() : 8, 8);
-  for (int row = 0; row < u.size(); row++) {
+  Matrix A(a.size() > 8 ? a.size() : 8, 8);
+  for (int row = 0; row < a.size(); row++) {
     for (int i = 0; i < 2; i++) {
       for (int j = 0; j < 2; j++) {
         for (int k = 0; k < 2; k++) {
-          A(row, 4 * i + 2 * j + k) = u[row](i) * v[row](j) * w[row](k);
+          A(row, 4 * i + 2 * j + k) = a[row](i) * b[row](j) * c[row](k);
         }
       }
     }
   }
-  for (int row = u.size(); row < 8; row++) {
+  for (int row = a.size(); row < 8; row++) {
     for (int col = 0; col < 8; col++) {
       A(row, col) = 0;
     }
@@ -291,17 +259,17 @@ TrifocalTensor2 TrifocalTensor2::FromTensor(const Matrix2& matrix0,
 
 // Finds a measurement in the first view using measurements from second and
 // third views.
-Rot2 TrifocalTensor2::transform(const Rot2& vZp, const Rot2& wZp,
+Rot2 TrifocalTensor2::transform(const Rot2& bZp, const Rot2& cZp,
                                 OptionalJacobian<1, 5> Dtensor) const {
-  Rot2 uZp;
-  Vector2 v_measurement, w_measurement;
-  v_measurement << vZp.c(), vZp.s();
-  w_measurement << wZp.c(), wZp.s();
-  return Rot2::atan2(dot(mat0() * w_measurement, v_measurement),
-                     -dot(mat1() * w_measurement, v_measurement));
+  Vector2 b_measurement, c_measurement;
+  b_measurement << bZp.c(), bZp.s();
+  c_measurement << cZp.c(), cZp.s();
+  const auto t = tensor();
+  return Rot2::atan2(dot(t.first * c_measurement, b_measurement),
+                     -dot(t.second * c_measurement, b_measurement));
 }
 
-std::pair<Matrix2, Matrix2> TrifocalTensor2::mat(
+std::pair<Matrix2, Matrix2> TrifocalTensor2::tensor(
     OptionalJacobian<8, 5> Dtensor) const {
   Matrix2 matrix0, matrix1;
   Matrix42 trifocal_matrix;
@@ -335,124 +303,6 @@ std::pair<Matrix2, Matrix2> TrifocalTensor2::mat(
   // vec0 << matrix0(0, 0), matrix0(0, 1), matrix0(1, 0), matrix0(1, 1);
 
   return std::make_pair(matrix0, matrix1);
-}
-
-Matrix2 TrifocalTensor2::mat0(OptionalJacobian<4, 5> Dtensor) const {
-  Matrix2 matrix0;
-  Matrix Dintermedia_wrt_minimal(9, 5);
-
-  Vector4 vec0;
-
-  Vector9 intermedia = intermediaFromMinimal(aRb_, aRc_, atb_, atc_, btc_,
-                                             Dintermedia_wrt_minimal);
-
-  // trifocal matrix formula using intermediate variables
-  matrix0(0, 0) = -intermedia(8) * intermedia(0) * intermedia(2) +
-                  intermedia(4) * intermedia(6);
-  matrix0(0, 1) = intermedia(8) * intermedia(1) * intermedia(2) +
-                  intermedia(4) * intermedia(7);
-  matrix0(1, 0) = -intermedia(8) * intermedia(0) * intermedia(3) -
-                  intermedia(5) * intermedia(6);
-  matrix0(1, 1) = intermedia(8) * intermedia(1) * intermedia(3) -
-                  intermedia(5) * intermedia(7);
-
-  if (Dtensor) {
-    Matrix Dtensor_wrt_intermedia(4, 9);
-    for (int i = 0; i < 4; i++) {
-      for (int j = 0; j < 9; j++) {
-        Dtensor_wrt_intermedia(i, j) = 0;
-      }
-    }
-    // calculate jacobian according to the formula above
-    Dtensor_wrt_intermedia(0, 0) = -intermedia(8) * intermedia(2);
-    Dtensor_wrt_intermedia(0, 2) = -intermedia(8) * intermedia(0);
-    Dtensor_wrt_intermedia(0, 8) = -intermedia(0) * intermedia(2);
-    Dtensor_wrt_intermedia(0, 4) = intermedia(6);
-    Dtensor_wrt_intermedia(0, 6) = intermedia(4);
-
-    Dtensor_wrt_intermedia(1, 1) = intermedia(8) * intermedia(2);
-    Dtensor_wrt_intermedia(1, 2) = intermedia(8) * intermedia(1);
-    Dtensor_wrt_intermedia(1, 8) = intermedia(1) * intermedia(2);
-    Dtensor_wrt_intermedia(1, 4) = intermedia(7);
-    Dtensor_wrt_intermedia(1, 7) = intermedia(4);
-
-    Dtensor_wrt_intermedia(2, 0) = -intermedia(8) * intermedia(3);
-    Dtensor_wrt_intermedia(2, 3) = -intermedia(8) * intermedia(0);
-    Dtensor_wrt_intermedia(2, 8) = -intermedia(0) * intermedia(3);
-    Dtensor_wrt_intermedia(2, 5) = -intermedia(6);
-    Dtensor_wrt_intermedia(2, 6) = -intermedia(5);
-
-    Dtensor_wrt_intermedia(3, 1) = intermedia(8) * intermedia(3);
-    Dtensor_wrt_intermedia(3, 3) = intermedia(8) * intermedia(1);
-    Dtensor_wrt_intermedia(3, 8) = intermedia(1) * intermedia(3);
-    Dtensor_wrt_intermedia(3, 5) = -intermedia(7);
-    Dtensor_wrt_intermedia(3, 7) = -intermedia(5);
-
-    *Dtensor << Dtensor_wrt_intermedia * Dintermedia_wrt_minimal;
-  }
-
-  vec0 << matrix0(0, 0), matrix0(0, 1), matrix0(1, 0), matrix0(1, 1);
-
-  auto pose_pair = posesFromMinimal(aRb_, aRc_, atb_, atc_, btc_);
-  auto mat_pair = tensorFromPose(pose_pair.first, pose_pair.second);
-  return mat_pair.first;
-}
-
-Matrix2 TrifocalTensor2::mat1(OptionalJacobian<4, 5> Dtensor) const {
-  Matrix2 matrix1;
-  Matrix Dintermedia_wrt_minimal(9, 5);
-
-  Vector9 intermedia = intermediaFromMinimal(aRb_, aRc_, atb_, atc_, btc_,
-                                             &Dintermedia_wrt_minimal);
-
-  // trifocal matrix formula using intermediate variables (different with mat0)
-  matrix1(0, 0) = intermedia(8) * intermedia(0) * intermedia(3) -
-                  intermedia(4) * intermedia(7);
-  matrix1(0, 1) = -intermedia(8) * intermedia(1) * intermedia(3) +
-                  intermedia(4) * intermedia(6);
-  matrix1(1, 0) = -intermedia(8) * intermedia(0) * intermedia(2) +
-                  intermedia(5) * intermedia(7);
-  matrix1(1, 1) = intermedia(8) * intermedia(1) * intermedia(2) -
-                  intermedia(5) * intermedia(6);
-
-  if (Dtensor) {
-    Matrix Dtensor_wrt_intermedia(4, 9);
-    for (int i = 0; i < 4; i++) {
-      for (int j = 0; j < 9; j++) {
-        Dtensor_wrt_intermedia(i, j) = 0;
-      }
-    }
-    // calculate jacobian according to the formula above
-    Dtensor_wrt_intermedia(0, 0) = intermedia(8) * intermedia(3);
-    Dtensor_wrt_intermedia(0, 3) = intermedia(8) * intermedia(0);
-    Dtensor_wrt_intermedia(0, 8) = intermedia(0) * intermedia(3);
-    Dtensor_wrt_intermedia(0, 4) = -intermedia(7);
-    Dtensor_wrt_intermedia(0, 7) = -intermedia(4);
-
-    Dtensor_wrt_intermedia(1, 1) = -intermedia(8) * intermedia(3);
-    Dtensor_wrt_intermedia(1, 3) = -intermedia(8) * intermedia(1);
-    Dtensor_wrt_intermedia(1, 8) = -intermedia(1) * intermedia(3);
-    Dtensor_wrt_intermedia(1, 4) = intermedia(6);
-    Dtensor_wrt_intermedia(1, 6) = intermedia(4);
-
-    Dtensor_wrt_intermedia(2, 0) = -intermedia(8) * intermedia(2);
-    Dtensor_wrt_intermedia(2, 2) = -intermedia(8) * intermedia(0);
-    Dtensor_wrt_intermedia(2, 8) = -intermedia(0) * intermedia(2);
-    Dtensor_wrt_intermedia(2, 5) = intermedia(7);
-    Dtensor_wrt_intermedia(2, 7) = intermedia(5);
-
-    Dtensor_wrt_intermedia(3, 1) = intermedia(8) * intermedia(2);
-    Dtensor_wrt_intermedia(3, 2) = intermedia(8) * intermedia(1);
-    Dtensor_wrt_intermedia(3, 8) = intermedia(1) * intermedia(2);
-    Dtensor_wrt_intermedia(3, 5) = -intermedia(6);
-    Dtensor_wrt_intermedia(3, 6) = -intermedia(5);
-
-    *Dtensor << Dtensor_wrt_intermedia * Dintermedia_wrt_minimal;
-  }
-
-  auto pose_pair = posesFromMinimal(aRb_, aRc_, atb_, atc_, btc_);
-  auto mat_pair = tensorFromPose(pose_pair.first, pose_pair.second);
-  return mat_pair.second;
 }
 
 void TrifocalTensor2::print(const std::string& s) const {
