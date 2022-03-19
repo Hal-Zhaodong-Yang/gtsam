@@ -106,7 +106,7 @@ class TrifocalTensor2 {
    * @param cZp projective bearing measurement in camera c
    * @return projective bearing measurement in camera a
    */
-  Point2 transform(const Point2& bZp, const Point2& cZp,
+  Point2 transform(const Point2& bp, const Point2& cp,
                    OptionalJacobian<2, 5> Dtensor = boost::none) const;
 
   /**

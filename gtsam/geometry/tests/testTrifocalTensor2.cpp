@@ -9,8 +9,8 @@
 /**
  * @file    testTrifocalTensor2.cpp
  * @brief   Tests for the trifocal tensor class.
- * @author  Zhaodong Yang
  * @author  Akshay Krishnan
+ * @author  Zhaodong Yang
  */
 
 #include <CppUnitLite/TestHarness.h>
@@ -167,26 +167,27 @@ TEST(TrifocalTensor2, minimalRepresentationRoundTrip) {
   EXPECT(assert_equal(test_tensor.second, actual_tensor_mat1));
 }
 
-Rot2 tranformBearing(const TrifocalTensor2& tensor, const Rot2& theta_b,
-                     const Rot2& theta_c) {
+Point2 tranformBearing(const TrifocalTensor2& tensor, const Point2& theta_b,
+                     const Point2& theta_c) {
   return tensor.transform(theta_b, theta_c);
 }
 
-// test jacobian of transform()
+// Check jacobian of transform()
+TEST(TrifocalTensor2, transformJacobian) {
+  trifocal::TrifocalTestData data = trifocal::getTestData();
+  Rot2 theta_b = data.measurements[0][0], theta_c = data.measurements[1][0];
+  Point2 bp(theta_b.c(), theta_b.s()), cp(theta_c.c(), theta_c.s());
+  std::function<Point2(const TrifocalTensor2&)> f =
+      std::bind(&tranformBearing, std::placeholders::_1, bp, cp);
 
-// TEST(TrifocalTensor2, transformJacobian) {
-//   trifocal::TrifocalTestData data = trifocal::getTestData();
-//   Rot2 theta_b = data.measurements[0][0], theta_c = data.measurements[1][0];
-//   std::function<Rot2(const TrifocalTensor2&)> f =
-//       std::bind(&tranformBearing, std::placeholders::_1, theta_b, theta_c);
+  Matrix25 expected_H = numericalDerivative11(f, data.gt_tensor);
 
-//   Matrix15 expected_H = numericalDerivative11(f, data.gt_tensor);
+  Matrix25 actual_H;
+  data.gt_tensor.transform(bp, cp, actual_H);
+  EXPECT(assert_equal(expected_H, actual_H));
+}
 
-//   Matrix15 actual_H;
-//   Rot2 result = data.gt_tensor.transform(theta_b, theta_c, actual_H);
-//   EXPECT(assert_equal(expected_H, actual_H));
-// }
-
+// Check jacobian of the full tensor wrt manifold.
 TEST(TrifocalTensor2, tensorConversionJacobian) {
   TrifocalTensor2 test_tensor = trifocal::getTestData().gt_tensor;
   std::function<Vector8(const TrifocalTensor2&)> f2 =

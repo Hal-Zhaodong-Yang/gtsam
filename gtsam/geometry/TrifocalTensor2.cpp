@@ -36,26 +36,18 @@ double calTrifocalFromIntermedia(double x1, double x2, double x3, double x4,
   return x1 * x2 * x3 + x4 * x5;
 }
 
-Matrix89 calJacobianWrtIntermedia(const Vector9& f) {
-  Matrix89 Dtensor_wrt_intermedia;
-  Dtensor_wrt_intermedia.block(0, 0, 1, 9) << -f(8) * f(2), 0, -f(8) * f(0), 0,
-      f(6), 0, f(4), 0, -f(0) * f(2);
-  Dtensor_wrt_intermedia.block(1, 0, 1, 9) << 0, f(8) * f(2), f(8) * f(1), 0,
-      f(7), 0, 0, f(4), f(1) * f(2);
-  Dtensor_wrt_intermedia.block(2, 0, 1, 9) << -f(8) * f(3), 0, 0, -f(8) * f(0),
-      0, -f(6), -f(5), 0, -f(0) * f(3);
-  Dtensor_wrt_intermedia.block(3, 0, 1, 9) << 0, f(8) * f(3), 0, f(8) * f(1), 0,
-      -f(7), 0, -f(5), f(1) * f(3);
-  Dtensor_wrt_intermedia.block(4, 0, 1, 9) << f(8) * f(3), 0, 0, f(8) * f(0),
-      -f(7), 0, 0, -f(4), f(0) * f(3);
-  Dtensor_wrt_intermedia.block(5, 0, 1, 9) << 0, -f(8) * f(3), 0, -f(8) * f(1),
-      f(6), 0, f(4), 0, -f(1) * f(3);
-  Dtensor_wrt_intermedia.block(6, 0, 1, 9) << -f(8) * f(2), 0, -f(8) * f(0), 0,
-      0, f(7), 0, f(5), -f(0) * f(2);
-  Dtensor_wrt_intermedia.block(7, 0, 1, 9) << 0, f(8) * f(2), f(8) * f(1), 0, 0,
-      -f(6), -f(5), 0, f(1) * f(2);
-
-  return Dtensor_wrt_intermedia;
+Matrix89 computeJacobianWrtIntermedia(const Vector9& f) {
+  Matrix89 H;
+  H.row(0) << -f(8) * f(2), 0, -f(8) * f(0), 0, f(6), 0, f(4), 0, -f(0) * f(2);
+  H.row(1) << 0, f(8) * f(2), f(8) * f(1), 0, f(7), 0, 0, f(4), f(1) * f(2);
+  H.row(2) << -f(8) * f(3), 0, 0, -f(8) * f(0), 0, -f(6), -f(5), 0,
+      -f(0) * f(3);
+  H.row(3) << 0, f(8) * f(3), 0, f(8) * f(1), 0, -f(7), 0, -f(5), f(1) * f(3);
+  H.row(4) << f(8) * f(3), 0, 0, f(8) * f(0), -f(7), 0, 0, -f(4), f(0) * f(3);
+  H.row(5) << 0, -f(8) * f(3), 0, -f(8) * f(1), f(6), 0, f(4), 0, -f(1) * f(3);
+  H.row(6) << -f(8) * f(2), 0, -f(8) * f(0), 0, 0, f(7), 0, f(5), -f(0) * f(2);
+  H.row(7) << 0, f(8) * f(2), f(8) * f(1), 0, 0, -f(6), -f(5), 0, f(1) * f(2);
+  return H;
 }
 
 // this function is intermediate calculation of trifocal matrix from trifocal
@@ -261,23 +253,32 @@ TrifocalTensor2 TrifocalTensor2::FromTensor(const Matrix2& matrix0,
 // third views.
 Rot2 TrifocalTensor2::transform(const Rot2& bZp, const Rot2& cZp,
                                 OptionalJacobian<1, 5> Dtensor) const {
-  Vector2 b_measurement, c_measurement;
-  b_measurement << bZp.c(), bZp.s();
-  c_measurement << cZp.c(), cZp.s();
-  const auto t = tensor();
-  return Rot2::atan2(dot(t.first * c_measurement, b_measurement),
-                     -dot(t.second * c_measurement, b_measurement));
+  Vector2 bp, cp;
+  bp << bZp.c(), bZp.s();
+  cp << cZp.c(), cZp.s();
+  Point2 ap = transform(bp, cp);
+  // TODO: Is this correct?
+  return Rot2::atan2(ap.x(), -ap.y());
+}
+
+Point2 TrifocalTensor2::transform(const Point2& bp, const Point2& cp,
+                                  OptionalJacobian<2, 5> Dtensor) const {
+  Matrix85 Dfull_tensor;
+  const auto t = tensor(Dfull_tensor);
+  if (Dtensor) {
+    Matrix28 Dap_tensor;
+    Dap_tensor << bp(0) * cp(0), bp(0) * cp(1), bp(1) * cp(0), bp(1) * cp(1),
+        0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, bp(0) * cp(0), bp(0) * cp(1),
+        bp(1) * cp(0), bp(1) * cp(1);
+    *Dtensor = Dap_tensor * Dfull_tensor;
+  }
+  return Point2(dot(t.first * cp, bp), dot(t.second * cp, bp));
 }
 
 std::pair<Matrix2, Matrix2> TrifocalTensor2::tensor(
     OptionalJacobian<8, 5> Dtensor) const {
   Matrix2 matrix0, matrix1;
-  Matrix42 trifocal_matrix;
-
   Matrix Dintermedia_wrt_minimal(9, 5);
-
-  Vector4 vec0;
-
   Vector9 f = intermediaFromMinimal(aRb_, aRc_, atb_, atc_, btc_,
                                     Dintermedia_wrt_minimal);
 
@@ -290,17 +291,11 @@ std::pair<Matrix2, Matrix2> TrifocalTensor2::tensor(
   matrix1(0, 1) = calTrifocalFromIntermedia(-f(8), f(1), f(3), f(4), f(6));
   matrix1(1, 0) = calTrifocalFromIntermedia(-f(8), f(0), f(2), f(5), f(7));
   matrix1(1, 1) = calTrifocalFromIntermedia(f(8), f(1), f(2), -f(5), f(6));
-  trifocal_matrix.block(0, 0, 2, 2) << matrix0;
-  trifocal_matrix.block(2, 0, 2, 2) << matrix1;
 
   if (Dtensor) {
-    Matrix Dtensor_wrt_intermedia(8, 9);
-    Dtensor_wrt_intermedia = calJacobianWrtIntermedia(f);
-
+    Matrix89 Dtensor_wrt_intermedia = computeJacobianWrtIntermedia(f);
     *Dtensor << Dtensor_wrt_intermedia * Dintermedia_wrt_minimal;
   }
-
-  // vec0 << matrix0(0, 0), matrix0(0, 1), matrix0(1, 0), matrix0(1, 1);
 
   return std::make_pair(matrix0, matrix1);
 }
