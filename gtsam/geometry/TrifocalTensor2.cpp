@@ -258,7 +258,7 @@ Rot2 TrifocalTensor2::transform(const Rot2& bZp, const Rot2& cZp,
   cp << cZp.c(), cZp.s();
   Point2 ap = transform(bp, cp);
   // TODO: Is this correct?
-  return Rot2::atan2(ap.x(), -ap.y());
+  return Rot2::atan2(ap.y(), ap.x());
 }
 
 Point2 TrifocalTensor2::transform(const Point2& bp, const Point2& cp,
@@ -267,12 +267,12 @@ Point2 TrifocalTensor2::transform(const Point2& bp, const Point2& cp,
   const auto t = tensor(Dfull_tensor);
   if (Dtensor) {
     Matrix28 Dap_tensor;
-    Dap_tensor << bp(0) * cp(0), bp(0) * cp(1), bp(1) * cp(0), bp(1) * cp(1),
-        0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, bp(0) * cp(0), bp(0) * cp(1),
-        bp(1) * cp(0), bp(1) * cp(1);
+    Dap_tensor << 0.0, 0.0, 0.0, 0.0, -bp(0) * cp(0), -bp(0) * cp(1),
+        -bp(1) * cp(0), -bp(1) * cp(1), bp(0) * cp(0), bp(0) * cp(1),
+        bp(1) * cp(0), bp(1) * cp(1), 0.0, 0.0, 0.0, 0.0;
     *Dtensor = Dap_tensor * Dfull_tensor;
   }
-  return Point2(dot(t.first * cp, bp), dot(t.second * cp, bp));
+  return Point2(-dot(t.second * cp, bp), dot(t.first * cp, bp));
 }
 
 std::pair<Matrix2, Matrix2> TrifocalTensor2::tensor(

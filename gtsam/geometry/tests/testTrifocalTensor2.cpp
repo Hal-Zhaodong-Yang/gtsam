@@ -116,6 +116,28 @@ TEST(TrifocalTensor2, transform) {
   }
 }
 
+// Check transform() of Point2 correctly transforms measurements from views B, C to A.
+TEST(TrifocalTensor2, transform_Point2) {
+  trifocal::TrifocalTestData data = trifocal::getTestData();
+
+  // Compute trifocal tensor
+  TrifocalTensor2 T = TrifocalTensor2::FromBearingMeasurements(
+      data.measurements[0], data.measurements[1], data.measurements[2]);
+
+  // Estimate measurement in view A from measurements in B and C
+  for (unsigned int i = 0; i < data.measurements[0].size(); i++) {
+    const Point2 actual_measurement =
+        T.transform(data.measurements[1][i].unit(), data.measurements[2][i].unit());
+
+    // TODO(zhaodong): how do we fix this?
+    // there might be two solutions for u1 and u2, comparing the ratio instead
+    // of both cos and sin
+    EXPECT(assert_equal(actual_measurement(0) * data.measurements[0][i].s(),
+                        actual_measurement(1) * data.measurements[0][i].c(),
+                        1e-8));
+  }
+}
+
 // Check the correct tensor is computed from measurements (catch regressions).
 // The tensor is computed only upto a scale.
 TEST(TrifocalTensor2, tensorRegression) {
@@ -184,7 +206,7 @@ TEST(TrifocalTensor2, transformJacobian) {
 
   Matrix25 actual_H;
   data.gt_tensor.transform(bp, cp, actual_H);
-  EXPECT(assert_equal(expected_H, actual_H));
+  EXPECT(assert_equal(expected_H, actual_H, 1e-7));
 }
 
 // Check jacobian of the full tensor wrt manifold.
