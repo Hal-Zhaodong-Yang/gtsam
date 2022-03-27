@@ -253,12 +253,16 @@ TrifocalTensor2 TrifocalTensor2::FromTensor(const Matrix2& matrix0,
 // third views.
 Rot2 TrifocalTensor2::transform(const Rot2& bZp, const Rot2& cZp,
                                 OptionalJacobian<1, 5> Dtensor) const {
-  Vector2 bp, cp;
-  bp << bZp.c(), bZp.s();
-  cp << cZp.c(), cZp.s();
-  Point2 ap = transform(bp, cp);
-  // TODO: Is this correct?
-  return Rot2::atan2(ap.y(), ap.x());
+  Vector2 bp = bZp.rotate(Point2(1, 0));
+  Vector2 cp = cZp.rotate(Point2(1, 0));
+  Matrix25 Dap_tensor;
+  Point2 ap = transform(bp, cp, Dap_tensor);
+  Matrix12 DaZp_ap;
+  Rot2 aZp = Rot2::relativeBearing(ap, DaZp_ap);
+  if(Dtensor) {
+    *Dtensor = DaZp_ap * Dap_tensor;
+  }
+  return aZp;
 }
 
 Point2 TrifocalTensor2::transform(const Point2& bp, const Point2& cp,
