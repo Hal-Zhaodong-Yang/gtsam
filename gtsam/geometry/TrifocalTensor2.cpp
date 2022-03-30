@@ -225,9 +225,9 @@ TrifocalTensor2 TrifocalTensor2::FromTensor(const Matrix2& matrix0,
   // TODO @Hal-Zhaodong-Yang: There's multiplicity of solution. Eigenvector can
   // be switched
   Vector2 epipoleB1;
-  epipoleB1 << -M(0, 1), M(0, 0) - eigenvalue1;
   Vector2 epipoleB3;
-  epipoleB3 << -M(0, 1), M(0, 0) - eigenvalue2;
+  epipoleB3 << -M(0, 1), M(0, 0) - eigenvalue1;
+  epipoleB1 << -M(0, 1), M(0, 0) - eigenvalue2;
 
   // calculate epipoles in other views by projecting back
   Vector2 epipoleA2 = KAB * epipoleB1;
@@ -237,7 +237,8 @@ TrifocalTensor2 TrifocalTensor2::FromTensor(const Matrix2& matrix0,
 
   Rot2 aRb, aRc, atb, atc, btc;
   // TODO @Hal-Zhaodong-Yang: transformation from projection to bearing is not a
-  // surjection. There's multiplicity of solution
+  // surjection. There's multiplicity of solution. Add constraint to check if the
+  // solution is self-consistent
   atb = Rot2::atan2(epipoleA2(1), epipoleA2(0));
   atc = Rot2::atan2(epipoleA3(1), epipoleA3(0));
   btc = Rot2::atan2(epipoleB3(1), epipoleB3(0));
@@ -245,6 +246,23 @@ TrifocalTensor2 TrifocalTensor2::FromTensor(const Matrix2& matrix0,
              atan2(epipoleB1(1), epipoleB1(0)));
   aRc = Rot2(atan2(epipoleA3(1), epipoleA3(0)) -
              atan2(epipoleC1(1), epipoleC1(0)));
+  // change the initialized tensor to (0, pi)
+  Rot2 pi = Rot2::fromCosSin(-1, 0);
+  if (atb.theta() < 0){
+    atb = atb * pi;
+  }
+  if (atc.theta() < 0){
+    atc = atc * pi;
+  }
+  if (btc.theta() < 0){
+    btc = btc * pi;
+  }
+  if (aRb.theta() < 0){
+    aRb = aRb * pi;
+  }
+  if (aRc.theta() < 0){
+    aRc = aRc * pi;
+  }
 
   return TrifocalTensor2(aRb, aRc, atb, atc, btc);
 }

@@ -51,8 +51,8 @@ TrifocalTestData getTestData() {
 
   // Poses
   data.gt_poses.emplace_back(0, 0, 0);
-  data.gt_poses.emplace_back(-1.9, 4, -2 * acos(0.0) / 8);
-  data.gt_poses.emplace_back(2.1, -2.1, 2 * acos(0.0) / 3);
+  data.gt_poses.emplace_back(0.5, 2, 2 * acos(0.0) / 6);
+  data.gt_poses.emplace_back(2.1, 5, 2 * acos(0.0) / 3);
 
   Rot2 aRb = data.gt_poses[1].rotation();
   Rot2 aRc = data.gt_poses[2].rotation();
@@ -63,13 +63,13 @@ TrifocalTestData getTestData() {
   data.gt_tensor = TrifocalTensor2(aRb, aRc, atb, atc, btc);
 
   // Landmarks
-  data.gt_landmarks.emplace_back(1.2, 1.0);
-  data.gt_landmarks.emplace_back(2.4, 3.5);
-  data.gt_landmarks.emplace_back(-1.0, 0.5);
-  data.gt_landmarks.emplace_back(3.4, -1.5);
-  data.gt_landmarks.emplace_back(5.1, 0.6);
-  data.gt_landmarks.emplace_back(-0.1, -0.7);
-  data.gt_landmarks.emplace_back(3.1, 1.9);
+  data.gt_landmarks.emplace_back(2.0, 8.1);
+  data.gt_landmarks.emplace_back(2.4, 15.0);
+  data.gt_landmarks.emplace_back(10.6, 22.2);
+  data.gt_landmarks.emplace_back(9.2, 35.5);
+  data.gt_landmarks.emplace_back(7.1, 24.6);
+  data.gt_landmarks.emplace_back(15.5, 30.8);
+  data.gt_landmarks.emplace_back(8.1, 19.1);
 
   // Measurements
   for (const Pose2& pose : data.gt_poses) {
@@ -115,6 +115,12 @@ TEST(TrifocalTensor2, linearEstimationMinimalRepresentation) {
   TrifocalTensor2 T = TrifocalTensor2::FromBearingMeasurements(
       data.measurements[0], data.measurements[1], data.measurements[2]);
 
+  for (size_t i = 0; i < data.measurements[0].size(); i++) {
+    std::cout << data.measurements[0][i].theta() << " "
+              << data.measurements[1][i].theta() << " "
+              << data.measurements[2][i].theta() << std::endl;
+  }
+  data.gt_poses[1].print("view1 pose:");
   T.print("actual tensor");
   data.gt_tensor.print("GT tensor");
   EXPECT(T.equals(data.gt_tensor));
@@ -225,7 +231,7 @@ TEST(TrifocalTensor2, transformProjectiveJacobian) {
 
   Matrix25 actual_H;
   data.gt_tensor.transform(bp, cp, actual_H);
-  EXPECT(assert_equal(expected_H, actual_H, 1e-7));
+  EXPECT(assert_equal(expected_H, actual_H, 1e-6));
 }
 
 // Check jacobian of transform() for bearing measurements.
@@ -253,7 +259,7 @@ TEST(TrifocalTensor2, tensorConversionJacobian) {
 
   Matrix85 actual_H_pair;
   test_tensor.tensor(actual_H_pair);
-  EXPECT(assert_equal(expected_H_pair, actual_H_pair, 1e-7));
+  EXPECT(assert_equal(expected_H_pair, actual_H_pair, 1e-6));
 }
 
 // Check this.locaCoordinates(this.retract(v)) == v.
