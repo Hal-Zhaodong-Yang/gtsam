@@ -31,6 +31,78 @@ std::vector<Point2> convertToProjective(const std::vector<Rot2>& rotations) {
   return projectives;
 }
 
+// check if the solution is self-consistent
+bool isTrifocalValid(const Rot2& aRb, const Rot2& aRc, const Rot2& atb,
+                     const Rot2& atc, const Rot2& btc) {
+  double lambda1 = (atc * atb.inverse()).s() / (btc * aRb * atc.inverse()).s();
+  double lambda2 =
+      (btc * aRb * atb.inverse()).s() / (btc * aRb * atc.inverse()).s();
+
+  if (lambda1 < 0 || lambda2 < 0)
+    return false;
+  else
+    return true;
+}
+
+// check if the solution matches the measurements
+bool isMeasurementValid(const Rot2& aRb, const Rot2& aRc, const Rot2& atb,
+                        const Rot2& atc, const Rot2& btc,
+                        const std::vector<Rot2>& bearings_a,
+                        const std::vector<Rot2>& bearings_b,
+                        const std::vector<Rot2>& bearings_c) {
+  for (size_t i = 0; i < bearings_a.size(); i++) {
+    Rot2 u = bearings_a[i];
+    Rot2 v = bearings_b[i];
+    Rot2 w = bearings_c[i];
+    double lambda1 = (u * atb.inverse()).s() / (aRb * v * u.inverse()).s();
+    double lambda2 =
+        (aRb * v * atb.inverse()).s() / (aRb * v * u.inverse()).s();
+
+    double l =
+        (btc * aRb * atb.inverse()).s() / (btc * aRb * atc.inverse()).s();
+    if (lambda1 < 0 || lambda2 < 0) return false;
+    double lambda3 = (lambda2 * u.c() - l * atc.c()) / (aRc * w).c();
+
+    if (lambda3 < 0) return false;
+    if (abs(l * atc.s() + lambda3 * (aRc * w).s() - lambda2 * u.s()) > 1e-3)
+      return false;
+  }
+  return true;
+}
+
+// find all valid solution by checking if it is self-consistent and matches the
+// measurements
+std::vector<std::vector<Rot2>> validTrifocalSolution(
+    Rot2 aRb, Rot2 aRc, Rot2 atb, Rot2 atc, Rot2 btc,
+    const std::vector<Rot2>& bearings_a, const std::vector<Rot2>& bearings_b,
+    const std::vector<Rot2>& bearings_c) {
+  std::vector<std::vector<Rot2>> valid_solution;
+  for (int i = 0; i < 2; i++) {
+    aRb = aRb.inverse();
+    for (int j = 0; j < 2; j++) {
+      aRc = aRc.inverse();
+      for (int k = 0; k < 2; k++) {
+        atb = atb.inverse();
+        for (int t = 0; t < 2; t++) {
+          atc = atc.inverse();
+          for (int z = 0; z < 2; z++) {
+            btc = btc.inverse();
+            if (isTrifocalValid(aRb, aRc, atb, atc, btc) &&
+                isMeasurementValid(aRb, aRc, atb, atc, btc, bearings_a,
+                                   bearings_b, bearings_c)) {
+              std::cout << "found valid" << std::endl;
+              valid_solution.push_back({aRb, aRc, atb, atc, btc});
+            }
+          }
+        }
+      }
+    }
+  }
+
+  return valid_solution;
+}
+
+// Calculate the entries of trifocal tensor
 double calTrifocalFromIntermedia(double x1, double x2, double x3, double x4,
                                  double x5) {
   return x1 * x2 * x3 + x4 * x5;
@@ -150,9 +222,27 @@ Vector1 localCoordinatesRot2(const Rot2& this_rot, const Rot2& other, int idx,
 TrifocalTensor2 TrifocalTensor2::FromBearingMeasurements(
     const std::vector<Rot2>& bearings_a, const std::vector<Rot2>& bearings_b,
     const std::vector<Rot2>& bearings_c) {
-  return TrifocalTensor2::FromProjectiveBearingMeasurements(
+  std::vector<std::vector<Rot2>> valid_solutions;
+  TrifocalTensor2 trifocal = TrifocalTensor2::FromProjectiveBearingMeasurements(
       convertToProjective(bearings_a), convertToProjective(bearings_b),
       convertToProjective(bearings_c));
+  valid_solutions = validTrifocalSolution(
+      trifocal.aRb(), trifocal.aRc(), trifocal.atb(), trifocal.atc(),
+      trifocal.btc(), bearings_a, bearings_b, bearings_c);
+  std::cout << "possible solutions:" << std::endl;
+  std::cout << "number of valid solutions: " << valid_solutions.size()
+            << std::endl;
+  for (size_t i = 0; i < valid_solutions.size(); i++) {
+    std::cout << valid_solutions[i][0].theta() << " "
+              << valid_solutions[i][1].theta() << " "
+              << valid_solutions[i][2].theta() << " "
+              << valid_solutions[i][3].theta() << " "
+              << valid_solutions[i][4].theta() << " " << std::endl;
+  }
+
+  return TrifocalTensor2(valid_solutions.back()[0], valid_solutions.back()[1],
+                         valid_solutions.back()[2], valid_solutions.back()[3],
+                         valid_solutions.back()[4]);
 }
 
 // Construct from 8 bearing measurements expressed in projective coordinates.
@@ -179,7 +269,7 @@ TrifocalTensor2 TrifocalTensor2::FromProjectiveBearingMeasurements(
       }
     }
   }
-  for (int row = a.size(); row < 8; row++) {
+  for (size_t row = a.size(); row < 8; row++) {
     for (int col = 0; col < 8; col++) {
       A(row, col) = 0;
     }
@@ -197,6 +287,7 @@ TrifocalTensor2 TrifocalTensor2::FromProjectiveBearingMeasurements(
       matrix1(i, j) = V(2 * i + j + 4, V.cols() - 1);
     }
   }
+
   return TrifocalTensor2::FromTensor(matrix0, matrix1);
 }
 
@@ -237,8 +328,8 @@ TrifocalTensor2 TrifocalTensor2::FromTensor(const Matrix2& matrix0,
 
   Rot2 aRb, aRc, atb, atc, btc;
   // TODO @Hal-Zhaodong-Yang: transformation from projection to bearing is not a
-  // surjection. There's multiplicity of solution. Add constraint to check if the
-  // solution is self-consistent
+  // surjection. There's multiplicity of solution. Add constraint to check if
+  // the solution is self-consistent
   atb = Rot2::atan2(epipoleA2(1), epipoleA2(0));
   atc = Rot2::atan2(epipoleA3(1), epipoleA3(0));
   btc = Rot2::atan2(epipoleB3(1), epipoleB3(0));
@@ -248,19 +339,19 @@ TrifocalTensor2 TrifocalTensor2::FromTensor(const Matrix2& matrix0,
              atan2(epipoleC1(1), epipoleC1(0)));
   // change the initialized tensor to (0, pi)
   Rot2 pi = Rot2::fromCosSin(-1, 0);
-  if (atb.theta() < 0){
+  if (atb.theta() < 0) {
     atb = atb * pi;
   }
-  if (atc.theta() < 0){
+  if (atc.theta() < 0) {
     atc = atc * pi;
   }
-  if (btc.theta() < 0){
+  if (btc.theta() < 0) {
     btc = btc * pi;
   }
-  if (aRb.theta() < 0){
+  if (aRb.theta() < 0) {
     aRb = aRb * pi;
   }
-  if (aRc.theta() < 0){
+  if (aRc.theta() < 0) {
     aRc = aRc * pi;
   }
 
@@ -277,7 +368,7 @@ Rot2 TrifocalTensor2::transform(const Rot2& bZp, const Rot2& cZp,
   Point2 ap = transform(bp, cp, Dap_tensor);
   Matrix12 DaZp_ap;
   Rot2 aZp = Rot2::relativeBearing(ap, DaZp_ap);
-  if(Dtensor) {
+  if (Dtensor) {
     *Dtensor = DaZp_ap * Dap_tensor;
   }
   return aZp;
